@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
@@ -105,8 +106,10 @@ pub struct Box {
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
     pub archive_after: Option<String>,
+    #[serde(default)]
     pub desktop_available: bool,
     pub desktop_url: Option<String>,
+    #[serde(default)]
     pub snapshot_available: bool,
     pub subdomain: Option<String>,
     pub environment: Option<String>,
@@ -171,7 +174,7 @@ pub struct BoxActionResponse {
 
 // --- Requests ---
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateBoxRequest {
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
@@ -180,6 +183,7 @@ pub struct CreateBoxRequest {
     /// `Some(Some(n))` = n seconds.
     #[serde(skip_serializing_if = "is_none_ttl")]
     pub ttl_seconds: Option<TtlSeconds>,
+    /// Often holds secrets — redacted in `Debug`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -192,6 +196,24 @@ pub struct CreateBoxRequest {
     pub org: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
+}
+
+impl fmt::Debug for CreateBoxRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CreateBoxRequest")
+            .field("type_", &self.type_)
+            .field("ttl_seconds", &self.ttl_seconds)
+            .field("env", &self.env.as_ref().map(redact_env_map))
+            .field("environment", &self.environment)
+            .field("no_env", &self.no_env)
+            .field(
+                "setup_script",
+                &self.setup_script.as_ref().map(|_| "<redacted>"),
+            )
+            .field("org", &self.org)
+            .field("from", &self.from)
+            .finish()
+    }
 }
 
 impl CreateBoxRequest {
@@ -228,11 +250,12 @@ pub struct StopRequest {
     pub force: Option<bool>,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResumeRequest {
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub type_: Option<String>,
+    /// Often holds secrets — redacted in `Debug`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -241,6 +264,18 @@ pub struct ResumeRequest {
     pub no_env: Option<bool>,
     #[serde(skip_serializing_if = "is_none_ttl")]
     pub ttl_seconds: Option<TtlSeconds>,
+}
+
+impl fmt::Debug for ResumeRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ResumeRequest")
+            .field("type_", &self.type_)
+            .field("env", &self.env.as_ref().map(redact_env_map))
+            .field("environment", &self.environment)
+            .field("no_env", &self.no_env)
+            .field("ttl_seconds", &self.ttl_seconds)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -256,7 +291,7 @@ pub struct BoxesQuery {
     pub state: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandRequest {
     pub command: String,
@@ -266,6 +301,17 @@ pub struct CommandRequest {
     pub timeout_seconds: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detached: Option<bool>,
+}
+
+impl fmt::Debug for CommandRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CommandRequest")
+            .field("command", &"<redacted>")
+            .field("cwd", &self.cwd)
+            .field("timeout_seconds", &self.timeout_seconds)
+            .field("detached", &self.detached)
+            .finish()
+    }
 }
 
 impl CommandRequest {
@@ -289,7 +335,7 @@ impl CommandRequest {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandResponse {
     pub ok: bool,
@@ -308,6 +354,26 @@ pub struct CommandResponse {
     pub finished_at: Option<String>,
 }
 
+impl fmt::Debug for CommandResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CommandResponse")
+            .field("ok", &self.ok)
+            .field("type_", &self.type_)
+            .field("success", &self.success)
+            .field("exit_code", &self.exit_code)
+            .field("signal", &self.signal)
+            .field("stdout_len", &self.stdout.len())
+            .field("stderr_len", &self.stderr.len())
+            .field("stdout_truncated", &self.stdout_truncated)
+            .field("stderr_truncated", &self.stderr_truncated)
+            .field("timed_out", &self.timed_out)
+            .field("cwd", &self.cwd)
+            .field("started_at", &self.started_at)
+            .field("finished_at", &self.finished_at)
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileReadQuery {
@@ -316,7 +382,7 @@ pub struct FileReadQuery {
     pub encoding: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileReadResponse {
     pub ok: bool,
@@ -329,13 +395,36 @@ pub struct FileReadResponse {
     pub extra: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+impl fmt::Debug for FileReadResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FileReadResponse")
+            .field("ok", &self.ok)
+            .field("type_", &self.type_)
+            .field("path", &self.path)
+            .field("content_len", &self.content.as_ref().map(|c| c.len()))
+            .field("encoding", &self.encoding)
+            .field("extra_keys", &self.extra.keys().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileWriteRequest {
     pub path: String,
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding: Option<String>,
+}
+
+impl fmt::Debug for FileWriteRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FileWriteRequest")
+            .field("path", &self.path)
+            .field("content_len", &self.content.len())
+            .field("encoding", &self.encoding)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -420,4 +509,64 @@ pub struct ApiErrorDetail {
     pub message: Option<String>,
     pub status: Option<u16>,
     pub details: Option<serde_json::Value>,
+}
+
+fn redact_env_map(env: &HashMap<String, String>) -> HashMap<String, &'static str> {
+    env.keys().map(|k| (k.clone(), "<redacted>")).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn create_request_debug_redacts_env_and_setup() {
+        let mut env = HashMap::new();
+        env.insert("SECRET".into(), "super-secret-value".into());
+        let req = CreateBoxRequest {
+            env: Some(env),
+            setup_script: Some("export TOKEN=abc".into()),
+            ..Default::default()
+        };
+        let s = format!("{req:?}");
+        assert!(s.contains("<redacted>"));
+        assert!(!s.contains("super-secret-value"));
+        assert!(!s.contains("export TOKEN"));
+    }
+
+    #[test]
+    fn box_deserializes_without_desktop_flags() {
+        let v = json!({
+            "id": "bx_23456789",
+            "name": "demo",
+            "state": "ready"
+        });
+        let b: Box = serde_json::from_value(v).unwrap();
+        assert!(!b.desktop_available);
+        assert!(!b.snapshot_available);
+    }
+
+    #[test]
+    fn command_response_debug_hides_streams() {
+        let res = CommandResponse {
+            ok: true,
+            type_: None,
+            success: true,
+            exit_code: Some(0),
+            signal: None,
+            stdout: "secret-output".into(),
+            stderr: "secret-err".into(),
+            stdout_truncated: None,
+            stderr_truncated: None,
+            timed_out: false,
+            cwd: None,
+            started_at: None,
+            finished_at: None,
+        };
+        let s = format!("{res:?}");
+        assert!(s.contains("stdout_len"));
+        assert!(!s.contains("secret-output"));
+        assert!(!s.contains("secret-err"));
+    }
 }

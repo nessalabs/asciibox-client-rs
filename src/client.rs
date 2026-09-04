@@ -156,9 +156,11 @@ impl BoxApi {
         path: impl Into<String>,
         encoding: Option<&str>,
     ) -> Result<FileReadResponse> {
+        let path = path.into();
+        validate_file_path(&path)?;
         let api_path = format!("/boxes/{}/files", validate_box_id(box_id)?);
         let q = FileReadQuery {
-            path: path.into(),
+            path,
             encoding: encoding.map(str::to_string),
         };
         self.get_json_query(&api_path, &q).await
@@ -169,6 +171,7 @@ impl BoxApi {
         box_id: &str,
         request: FileWriteRequest,
     ) -> Result<FileWriteResponse> {
+        validate_file_path(&request.path)?;
         let path = format!("/boxes/{}/files", validate_box_id(box_id)?);
         self.send_body(Method::POST, &path, &request, false).await
     }
@@ -341,6 +344,13 @@ pub(crate) fn validate_box_id(box_id: &str) -> Result<&str> {
         return Err(Error::InvalidBoxId(box_id.to_string()));
     }
     Ok(box_id)
+}
+
+fn validate_file_path(path: &str) -> Result<()> {
+    if path.is_empty() || path.chars().all(char::is_whitespace) {
+        return Err(Error::Config("file path must not be empty".into()));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -139,11 +139,23 @@ fn validate_token(token: &str) -> Result<()> {
 fn validate_base_path(base: &str) -> Result<()> {
     let parsed =
         Url::parse(base).map_err(|e| Error::Config(format!("invalid base_path `{base}`: {e}")))?;
-    if parsed.scheme() != "http" && parsed.scheme() != "https" {
-        return Err(Error::Config(format!(
-            "base_path must be http(s), got {}",
-            parsed.scheme()
-        )));
+    match parsed.scheme() {
+        "https" => {}
+        "http" => {
+            let host = parsed.host_str().unwrap_or("");
+            let loopback =
+                matches!(host, "localhost" | "127.0.0.1" | "::1") || host.starts_with("127.");
+            if !loopback {
+                return Err(Error::Config(format!(
+                    "base_path must use https (http only allowed for localhost), got `{base}`"
+                )));
+            }
+        }
+        other => {
+            return Err(Error::Config(format!(
+                "base_path must be http(s), got {other}"
+            )));
+        }
     }
     if parsed.host_str().is_none() {
         return Err(Error::Config("base_path must include a host".into()));
@@ -152,10 +164,8 @@ fn validate_base_path(base: &str) -> Result<()> {
 }
 
 fn redact_secret(secret: &str) -> String {
-    if secret.len() <= 8 {
-        return "***".into();
-    }
-    format!("{}…", &secret[..8])
+    // Never echo key material in logs — length only.
+    format!("<redacted len={}>", secret.len())
 }
 
 #[cfg(test)]
@@ -166,13 +176,24 @@ mod tests {
     fn debug_redacts_token() {
         let cfg = Configuration::new("box_secret_value_here").unwrap();
         let s = format!("{cfg:?}");
-        assert!(s.contains("box_secr…"));
+        assert!(s.contains("<redacted len="));
+        assert!(!s.contains("box_secret"));
         assert!(!s.contains("secret_value"));
     }
 
     #[test]
     fn rejects_empty_token() {
         assert!(Configuration::new("").is_err());
+    }
+
+    #[test]
+    fn rejects_remote_http_base_path() {
+        let cfg = Configuration::new("box_test_key").unwrap();
+        assert!(cfg
+            .clone()
+            .with_base_path("http://evil.example/api")
+            .is_err());
+        assert!(cfg.with_base_path("http://127.0.0.1:8080").is_ok());
     }
 
     #[test]
