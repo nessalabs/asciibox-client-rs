@@ -53,7 +53,7 @@ Not in v0.1: `prompt`, events stream, snapshots, environments, detached commands
 | `command` HTTP timeout | `timeout_seconds` (default 30) **+ 15s slack**, at least `request_timeout` | Avoids cutting off long in-box commands |
 | GET retries | up to 3 | Connect/timeout/429/502–504/`box_starting`/`box_securing` only |
 
-`Configuration` redacts the access token in `Debug` (length only). `CreateBoxRequest` / `ResumeRequest` redact `env` and setup scripts; `CommandRequest` / `CommandResponse` / file IO types hide command text and stream bodies in `Debug`. Hosted port URLs are redacted in `HostPortResponse`. Commands are **never** auto-retried. Pass `Idempotency-Key` via `create_with_idempotency`. Non-localhost `http://` base URLs are rejected.
+`Configuration` redacts the access token in `Debug` (length only). `CreateBoxRequest` / `ResumeRequest` redact `env` and setup scripts; `CommandRequest` / `CommandResponse` / file IO types hide command text and stream bodies in `Debug`. Hosted port URLs are redacted in `HostPortResponse`. `Error::Api` / `Unexpected` `Display`/`Debug` omit server message/details/bodies (use `api_message()` / `api_details()` / `unexpected_body()` when you need them). Commands are **never** auto-retried. Pass `Idempotency-Key` via `create_with_idempotency`. Non-localhost `http://` base URLs are rejected.
 
 ## Tests
 

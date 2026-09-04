@@ -435,16 +435,19 @@ async fn ts_api_error_envelope() {
         .await;
 
     let err = api(&server).await.get("bx_23456789").await.unwrap_err();
-    match err {
+    match &err {
         Error::Api {
             status,
             code,
             request_id,
             ..
         } => {
-            assert_eq!(status, 404);
+            assert_eq!(*status, 404);
             assert_eq!(code, "not_found");
             assert_eq!(request_id, "req_abc");
+            assert_eq!(err.api_message(), Some("Box not found"));
+            // Display stays log-safe (no server message body).
+            assert!(!err.to_string().contains("Box not found"));
         }
         other => panic!("expected Api error, got {other:?}"),
     }

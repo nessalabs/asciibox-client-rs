@@ -299,7 +299,7 @@ fn map_error(status: StatusCode, bytes: &[u8]) -> Error {
         return Error::Api {
             status: status.as_u16(),
             code,
-            message,
+            message: truncate_str(&message),
             request_id: body.request_id.unwrap_or_default(),
             details,
         };
@@ -308,9 +308,12 @@ fn map_error(status: StatusCode, bytes: &[u8]) -> Error {
 }
 
 fn truncate_lossy(bytes: &[u8]) -> String {
-    let s = String::from_utf8_lossy(bytes);
+    truncate_str(&String::from_utf8_lossy(bytes))
+}
+
+fn truncate_str(s: &str) -> String {
     if s.len() <= ERROR_BODY_MAX {
-        return s.into_owned();
+        return s.to_string();
     }
     let mut end = ERROR_BODY_MAX;
     while end > 0 && !s.is_char_boundary(end) {
