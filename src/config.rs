@@ -25,6 +25,8 @@ pub struct Configuration {
     pub command_timeout_slack: Duration,
     /// Sent as `User-Agent` (default `box_client/0.1`).
     pub user_agent: String,
+    /// Maximum buffered response body (default 64 MiB), including snapshot files.
+    pub max_response_bytes: usize,
 }
 
 impl fmt::Debug for Configuration {
@@ -37,6 +39,7 @@ impl fmt::Debug for Configuration {
             .field("request_timeout", &self.request_timeout)
             .field("command_timeout_slack", &self.command_timeout_slack)
             .field("user_agent", &self.user_agent)
+            .field("max_response_bytes", &self.max_response_bytes)
             .finish()
     }
 }
@@ -59,6 +62,7 @@ impl Configuration {
             connect_timeout: Self::DEFAULT_CONNECT_TIMEOUT,
             request_timeout: Self::DEFAULT_REQUEST_TIMEOUT,
             command_timeout_slack: Self::DEFAULT_COMMAND_TIMEOUT_SLACK,
+            max_response_bytes: 64 * 1024 * 1024,
             user_agent: format!("box_client/{}", env!("CARGO_PKG_VERSION")),
         })
     }
@@ -117,6 +121,11 @@ impl Configuration {
 
     pub fn with_user_agent(mut self, user_agent: impl Into<String>) -> Self {
         self.user_agent = user_agent.into();
+        self
+    }
+
+    pub fn with_max_response_bytes(mut self, max_bytes: usize) -> Self {
+        self.max_response_bytes = max_bytes;
         self
     }
 

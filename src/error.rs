@@ -27,6 +27,9 @@ pub enum Error {
         details: Option<serde_json::Value>,
     },
 
+    #[error("response exceeds configured limit of {limit} bytes")]
+    ResponseTooLarge { limit: usize },
+
     #[error("unexpected response (body redacted)")]
     Unexpected(String),
 
@@ -65,6 +68,10 @@ impl fmt::Debug for Error {
                 .field("message_len", &message.len())
                 .field("request_id", request_id)
                 .field("has_details", &details.is_some())
+                .finish(),
+            Self::ResponseTooLarge { limit } => f
+                .debug_struct("ResponseTooLarge")
+                .field("limit", limit)
                 .finish(),
             Self::Unexpected(body) => f
                 .debug_struct("Unexpected")

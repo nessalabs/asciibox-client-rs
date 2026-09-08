@@ -19,6 +19,11 @@ use serde_json::json;
 use wiremock::matchers::{body_partial_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
+fn fixture(name: &str) -> serde_json::Value {
+    serde_json::from_str::<serde_json::Value>(include_str!("fixtures/runtime.json")).unwrap()[name]
+        .clone()
+}
+
 fn box_json(id: &str, state: &str) -> serde_json::Value {
     json!({
         "id": id,
@@ -130,6 +135,96 @@ async fn ts_create_with_idempotency_key() {
         .await
         .unwrap();
     assert_eq!(created.box_.id, "bx_23456789");
+}
+
+#[tokio::test]
+async fn extended_prompt_events_desktop_and_delete_routes() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/boxes/bx_23456789/prompt"))
+        .and(body_partial_json(json!({"prompt": "do it", "provider":"codex"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ok": true, "id":"bx_23456789", "promptId": "pr_1", "status": "queued", "provider":"codex",
+            "promptRun":{"id":"pr_1","promptId":"pr_1","boxId":"bx_23456789","status":"queued","done":false}
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/boxes/bx_23456789/events"))
+        .and(query_param("sort", "asc"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ok": true, "id":"bx_23456789", "events": [{"id":"ev_1","type":"prompt","timestamp":1,"data":{}}]
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/boxes/bx_23456789/desktop"))
+        .and(query_param("vnc", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ok": true, "desktopUrl": "https://secret.example", "provisioning": false
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/boxes/bx_23456789"))
+        .and(header("X-Ascii-Confirm-Delete", "bx_23456789"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixture("deletion")))
+        .mount(&server)
+        .await;
+
+    let client = api(&server).await;
+    let prompt = client
+        .prompt(
+            "bx_23456789",
+            box_client::PromptRequest::new(box_client::PromptProvider::Codex, "do it"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(prompt.prompt_id, "pr_1");
+    let events = client
+        .events(
+            "bx_23456789",
+            Some(&box_client::EventsQuery {
+                sort: Some("asc".into()),
+                ..Default::default()
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(events.events[0].id.as_deref(), Some("ev_1"));
+    let desktop = client
+        .desktop("bx_23456789", Some(1), Default::default())
+        .await
+        .unwrap();
+    assert!(desktop.desktop_url.is_some());
+    client.delete_box("bx_23456789").await.unwrap();
+}
+
+#[tokio::test]
+async fn extended_snapshot_and_environment_routes() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/snapshots/snap%2Funsafe/tree"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixture("snapshotTree")))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/environments"))
+        .and(body_partial_json(json!({"name":"ci"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixture("environments")))
+        .mount(&server)
+        .await;
+
+    let client = api(&server).await;
+    client.snapshot_tree("snap/unsafe").await.unwrap();
+    let envs = client
+        .create_environment(box_client::CreateBoxEnvironmentRequest { name: "ci".into() })
+        .await
+        .unwrap();
+    assert_eq!(
+        envs.environments[0].id,
+        "11111111-2222-3333-4444-555555555555"
+    );
 }
 
 #[tokio::test]

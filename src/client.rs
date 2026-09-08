@@ -8,6 +8,19 @@ use tokio::time::sleep;
 use crate::config::Configuration;
 use crate::error::{Error, Result};
 use crate::types::*;
+use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
+
+// encodeURIComponent preserves these URI-safe characters.
+const PATH_SEGMENT: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'~')
+    .remove(b'!')
+    .remove(b'\'')
+    .remove(b'(')
+    .remove(b')')
+    .remove(b'*');
 
 /// Ascii Box id pattern: `bx_` + 8 chars from a Crockford-like alphabet.
 const BOX_ID_PREFIX: &str = "bx_";
@@ -116,28 +129,215 @@ impl BoxApi {
         self.send_body(Method::POST, &path, &body, false).await
     }
 
+    /// Permanently delete a box and its exclusively-owned snapshot chains.
+    /// The API requires the box id again in the confirmation header.
+    pub async fn delete_box(&self, box_id: &str) -> Result<DeletionOperationResponse> {
+        let id = validate_box_id(box_id)?;
+        let url = format!("{}/boxes/{id}", self.base);
+        let req = self
+            .base_request(Method::DELETE, &url)
+            .header("X-Ascii-Confirm-Delete", id);
+        self.execute(req, false).await
+    }
+
+    pub async fn interrupt(&self, box_id: &str) -> Result<BoxActionResponse> {
+        let path = format!("/boxes/{}/interrupt", validate_box_id(box_id)?);
+        self.send_body(Method::POST, &path, &EmptyRequest {}, false)
+            .await
+    }
+
     // --- In-box ops ---
 
     /// HTTP timeout is raised to cover `timeout_seconds` + slack. Commands are
     /// never auto-retried (Ascii: execution may already be running).
     ///
-    /// `detached: true` is not supported in v0.1 (response shape differs); use a
-    /// sync command or wait for a later release.
     pub async fn command(&self, box_id: &str, request: CommandRequest) -> Result<CommandResponse> {
         if request.detached == Some(true) {
             return Err(Error::Config(
-                "detached commands are not supported in box_client v0.1".into(),
+                "use command_raw for detached commands".into(),
             ));
         }
+        match self.command_raw(box_id, request).await? {
+            CommandResult::Completed(response) => Ok(response),
+            CommandResult::Started(_) => Err(Error::Unexpected(
+                "detached response for synchronous command".into(),
+            )),
+        }
+    }
+
+    /// Start either a synchronous or detached command and preserve the union response.
+    pub async fn command_raw(
+        &self,
+        box_id: &str,
+        request: CommandRequest,
+    ) -> Result<CommandResult> {
         let path = format!("/boxes/{}/commands", validate_box_id(box_id)?);
         let url = format!("{}{path}", self.base);
-        let http_timeout = self
-            .config
-            .http_timeout_for_command(request.timeout_seconds);
         let req = self
             .base_request(Method::POST, &url)
-            .timeout(http_timeout)
+            .timeout(
+                self.config
+                    .http_timeout_for_command(request.timeout_seconds),
+            )
             .json(&request);
+        self.execute(req, false).await
+    }
+
+    pub async fn command_status(
+        &self,
+        box_id: &str,
+        process_id: &str,
+        query: Option<&CommandStatusQuery>,
+    ) -> Result<CommandStatusResponse> {
+        let path = format!(
+            "/boxes/{}/commands/{}",
+            validate_box_id(box_id)?,
+            segment(process_id)?
+        );
+        match query {
+            Some(q) => self.get_json_query(&path, q).await,
+            None => self.get_json(&path).await,
+        }
+    }
+
+    pub async fn prompt(&self, box_id: &str, request: PromptRequest) -> Result<PromptResponse> {
+        let path = format!("/boxes/{}/prompt", validate_box_id(box_id)?);
+        self.send_body(Method::POST, &path, &request, false).await
+    }
+
+    pub async fn prompt_run_status(
+        &self,
+        box_id: &str,
+        prompt_id: &str,
+    ) -> Result<PromptRunResponse> {
+        let path = format!(
+            "/boxes/{}/prompts/{}",
+            validate_box_id(box_id)?,
+            segment(prompt_id)?
+        );
+        self.get_json(&path).await
+    }
+
+    pub async fn events(
+        &self,
+        box_id: &str,
+        query: Option<&EventsQuery>,
+    ) -> Result<EventsResponse> {
+        let path = format!("/boxes/{}/events", validate_box_id(box_id)?);
+        match query {
+            Some(q) => self.get_json_query(&path, q).await,
+            None => self.get_json(&path).await,
+        }
+    }
+
+    pub async fn desktop(
+        &self,
+        box_id: &str,
+        vnc: Option<u8>,
+        request: DesktopRequest,
+    ) -> Result<DesktopResponse> {
+        let path = format!("/boxes/{}/desktop", validate_box_id(box_id)?);
+        let url = format!("{}{path}", self.base);
+        let mut req = self.base_request(Method::POST, &url).json(&request);
+        if let Some(vnc) = vnc {
+            req = req.query(&[("vnc", vnc)]);
+        }
+        self.execute(req, false).await
+    }
+
+    // --- Snapshots ---
+    pub async fn list_box_snapshots(
+        &self,
+        box_id: &str,
+        query: Option<&SnapshotsQuery>,
+    ) -> Result<SnapshotListResponse> {
+        let path = format!("/boxes/{}/snapshots", validate_box_id(box_id)?);
+        match query {
+            Some(q) => self.get_json_query(&path, q).await,
+            None => self.get_json(&path).await,
+        }
+    }
+    pub async fn latest_box_snapshot(&self, box_id: &str) -> Result<SnapshotLatestResponse> {
+        self.get_json(&format!(
+            "/boxes/{}/snapshots/latest",
+            validate_box_id(box_id)?
+        ))
+        .await
+    }
+    pub async fn list_snapshots(
+        &self,
+        query: Option<&SnapshotsQuery>,
+    ) -> Result<SnapshotListResponse> {
+        match query {
+            Some(q) => self.get_json_query("/snapshots", q).await,
+            None => self.get_json("/snapshots").await,
+        }
+    }
+    pub async fn snapshot_tree(&self, snapshot_id: &str) -> Result<SnapshotTreeResponse> {
+        self.get_json(&format!("/snapshots/{}/tree", segment(snapshot_id)?))
+            .await
+    }
+
+    /// Download a snapshot file as bytes. `path` is a query value, not a URL segment.
+    pub async fn snapshot_file(&self, snapshot_id: &str, path: Option<&str>) -> Result<Vec<u8>> {
+        let url = format!("{}/snapshots/{}/files", self.base, segment(snapshot_id)?);
+        let mut req = self.base_request(Method::GET, &url).header("Accept", "*/*");
+        if let Some(path) = path {
+            req = req.query(&[("path", path)]);
+        }
+        self.execute_bytes(req, true).await
+    }
+
+    pub async fn snapshot_download(&self, snapshot_id: &str) -> Result<SnapshotDownloadResponse> {
+        self.get_json(&format!("/snapshots/{}/download", segment(snapshot_id)?))
+            .await
+    }
+    pub async fn delete_snapshot(&self, snapshot_id: &str) -> Result<DeletionOperationResponse> {
+        let id = segment(snapshot_id)?;
+        let req = self
+            .base_request(Method::DELETE, &format!("{}/snapshots/{id}", self.base))
+            .header("X-Ascii-Confirm-Delete", snapshot_id);
+        self.execute(req, false).await
+    }
+
+    /// Observe an accepted deletion until the operation reports `completed`.
+    pub async fn get_deletion_operation(
+        &self,
+        operation_id: &str,
+    ) -> Result<DeletionOperationResponse> {
+        self.get_json(&format!("/deletion-operations/{}", segment(operation_id)?))
+            .await
+    }
+
+    // --- Environments ---
+    pub async fn environments(&self) -> Result<BoxEnvironmentListResponse> {
+        self.get_json("/environments").await
+    }
+    pub async fn create_environment(
+        &self,
+        request: CreateBoxEnvironmentRequest,
+    ) -> Result<BoxEnvironmentListResponse> {
+        self.send_body(Method::POST, "/environments", &request, false)
+            .await
+    }
+    pub async fn update_environment(
+        &self,
+        id: &str,
+        request: UpdateBoxEnvironmentRequest,
+    ) -> Result<BoxEnvironmentResponse> {
+        self.send_body(
+            Method::PUT,
+            &format!("/environments/{}", segment(id)?),
+            &request,
+            false,
+        )
+        .await
+    }
+    pub async fn delete_environment(&self, id: &str) -> Result<BoxEnvironmentResponse> {
+        let req = self.base_request(
+            Method::DELETE,
+            &format!("{}/environments/{}", self.base, segment(id)?),
+        );
         self.execute(req, false).await
     }
 
@@ -246,39 +446,81 @@ impl BoxApi {
         req: RequestBuilder,
         retry_idempotent: bool,
     ) -> Result<T> {
+        let bytes = self.execute_bytes(req, retry_idempotent).await?;
+        serde_json::from_slice(&bytes).map_err(Error::from)
+    }
+
+    async fn execute_bytes(&self, req: RequestBuilder, retry_idempotent: bool) -> Result<Vec<u8>> {
         let max_attempts = if retry_idempotent { GET_MAX_RETRIES } else { 1 };
-        let mut attempt = 0u32;
-        loop {
-            attempt += 1;
+        for attempt in 0..max_attempts {
             let pending = req
                 .try_clone()
                 .ok_or_else(|| Error::Unexpected("request body is not retryable".into()))?;
-            match send_once(pending).await {
-                Ok(v) => return Ok(v),
-                Err(e) if retry_idempotent && e.is_retryable() && attempt < max_attempts => {
+            let (result, retry_after) = send_once(pending, self.config.max_response_bytes).await;
+            match result {
+                Ok(bytes) => return Ok(bytes),
+                Err(e) if retry_idempotent && e.is_retryable() && attempt + 1 < max_attempts => {
+                    let base = GET_RETRY_BASE.saturating_mul(2u32.pow(attempt));
                     let backoff =
-                        GET_RETRY_BASE.saturating_mul(2u32.pow(attempt.saturating_sub(1)));
-                    sleep(backoff).await;
-                    continue;
+                        base + Duration::from_millis(fastrand::u64(0..=base.as_millis() as u64));
+                    let delay = retry_after.map(|d| d.max(backoff)).unwrap_or(backoff);
+                    // Never retry earlier than Retry-After or hold a caller for an
+                    // arbitrarily long server delay. Let the caller schedule later.
+                    if delay > self.config.request_timeout {
+                        return Err(e);
+                    }
+                    sleep(delay).await;
                 }
                 Err(e) => return Err(e),
             }
         }
+        unreachable!("at least one request attempt")
     }
 }
 
-async fn send_once<T: DeserializeOwned>(req: RequestBuilder) -> Result<T> {
-    let res = req.send().await?;
-    parse(res).await
+async fn send_once(req: RequestBuilder, limit: usize) -> (Result<Vec<u8>>, Option<Duration>) {
+    let mut response = match req.send().await {
+        Ok(res) => res,
+        Err(e) => return (Err(e.into()), None),
+    };
+    let status = response.status();
+    let retry_after = response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_retry_after);
+    let result = async {
+        if response.content_length().is_some_and(|n| n > limit as u64) {
+            return Err(Error::ResponseTooLarge { limit });
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            if chunk.len() > limit.saturating_sub(bytes.len()) {
+                return Err(Error::ResponseTooLarge { limit });
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        if status.is_success() {
+            Ok(bytes)
+        } else {
+            Err(map_error(status, &bytes))
+        }
+    }
+    .await;
+    (result, retry_after)
 }
 
-async fn parse<T: DeserializeOwned>(res: reqwest::Response) -> Result<T> {
-    let status = res.status();
-    let bytes = res.bytes().await?;
-    if status.is_success() {
-        return serde_json::from_slice(&bytes).map_err(Error::from);
-    }
-    Err(map_error(status, &bytes))
+fn parse_retry_after(value: &str) -> Option<Duration> {
+    value
+        .parse::<u64>()
+        .ok()
+        .map(Duration::from_secs)
+        .or_else(|| {
+            httpdate::parse_http_date(value).ok().map(|date| {
+                date.duration_since(std::time::SystemTime::now())
+                    .unwrap_or_default()
+            })
+        })
 }
 
 fn map_error(status: StatusCode, bytes: &[u8]) -> Error {
@@ -354,6 +596,15 @@ fn validate_file_path(path: &str) -> Result<()> {
         return Err(Error::Config("file path must not be empty".into()));
     }
     Ok(())
+}
+
+fn segment(value: &str) -> Result<String> {
+    if value.is_empty() || value.chars().all(char::is_whitespace) || matches!(value, "." | "..") {
+        return Err(Error::Config(
+            "path identifier must not be empty or a dot segment".into(),
+        ));
+    }
+    Ok(utf8_percent_encode(value, PATH_SEGMENT).to_string())
 }
 
 #[cfg(test)]

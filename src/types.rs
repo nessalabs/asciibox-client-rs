@@ -89,7 +89,7 @@ impl BoxState {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Box {
     pub id: String,
@@ -118,6 +118,19 @@ pub struct Box {
     pub setup_error: Option<String>,
     pub error: Option<serde_json::Value>,
     pub ssh_endpoint: Option<String>,
+}
+
+impl fmt::Debug for Box {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Box")
+            .field("id", &self.id)
+            .field("state", &self.state)
+            .field("vcpu", &self.vcpu)
+            .field("memory_gb", &self.memory_gb)
+            .field("desktop_available", &self.desktop_available)
+            .field("snapshot_available", &self.snapshot_available)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -194,6 +207,7 @@ pub struct CreateBoxRequest {
     pub setup_script: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub org: Option<String>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
 }
@@ -514,6 +528,19 @@ pub struct ApiErrorDetail {
 fn redact_env_map(env: &HashMap<String, String>) -> HashMap<String, &'static str> {
     env.keys().map(|k| (k.clone(), "<redacted>")).collect()
 }
+
+// Runtime models are grouped by API domain and re-exported at the crate root.
+mod commands;
+mod environments;
+mod prompts;
+mod snapshots;
+pub use commands::*;
+pub use environments::*;
+pub use prompts::*;
+pub use snapshots::*;
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct EmptyRequest {}
 
 #[cfg(test)]
 mod tests {

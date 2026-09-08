@@ -50,3 +50,21 @@ pub async fn stop_and_remove(
 ) -> Result<crate::types::BoxActionResponse> {
     api.stop(box_id, None).await
 }
+
+/// Stop normally, or permanently delete when `delete` is true.
+pub async fn stop_and_remove_with(
+    api: &BoxApi,
+    box_id: &str,
+    delete: bool,
+) -> Result<crate::types::StopOrDeleteResponse> {
+    use crate::types::StopOrDeleteResponse;
+    if delete {
+        api.delete_box(box_id)
+            .await
+            .map(StopOrDeleteResponse::Deleting)
+    } else {
+        api.stop(box_id, None)
+            .await
+            .map(StopOrDeleteResponse::Stopped)
+    }
+}
