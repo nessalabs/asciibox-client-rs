@@ -12,7 +12,7 @@ pub use stream::{stream_events, stream_prompt, StreamEventsOptions, StreamPrompt
 pub use tokio_util::sync::CancellationToken;
 
 pub use client::BoxApi;
-pub use config::{BoxClientConfig, Configuration, RetryConfig};
+pub use config::{BoxClientConfig, RetryConfig};
 pub use error::{Error, Result};
 pub use helpers::{exec_command, read_text, stop_and_remove, stop_and_remove_with, write_text};
 pub use types::*;
@@ -20,6 +20,3 @@ pub use wait::{
     wait_for_deletion, wait_for_desktop, wait_for_desktop_with, wait_for_prompt, wait_until_idle,
     wait_until_idle_with, wait_until_ready, wait_until_ready_with, DesktopWaitOptions, WaitOptions,
 };
-
-/// Alias for [`wait_for_prompt`].
-pub use wait::wait_for_prompt as wait_for_prompt_done;

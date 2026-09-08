@@ -102,12 +102,6 @@ impl BoxClientConfig {
         self
     }
 
-    /// Sets the default per-request timeout (does not change `connect_timeout`).
-    pub fn with_timeout(mut self, timeout: Duration) -> Self {
-        self.request_timeout = timeout;
-        self
-    }
-
     pub fn with_connect_timeout(mut self, timeout: Duration) -> Self {
         self.connect_timeout = timeout;
         self
@@ -222,9 +216,6 @@ mod tests {
         assert!(t >= Duration::from_secs(135));
     }
 }
-
-/// Compatibility name for [`BoxClientConfig`].
-pub type Configuration = BoxClientConfig;
 
 /// Exponential backoff for safe GET requests. `max_attempts = 1` disables retries.
 #[derive(Clone, Debug)]

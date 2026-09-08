@@ -5,11 +5,11 @@
 //! BOX_API_KEY=… BOX_ID=bx_… cargo test --test live -- --ignored
 //! ```
 
-use box_client::{exec_command, BoxApi, Configuration};
+use box_client::{exec_command, BoxApi, BoxClientConfig};
 
 fn client() -> BoxApi {
     let key = std::env::var("BOX_API_KEY").expect("BOX_API_KEY required for live tests");
-    BoxApi::new(Configuration::new(key).expect("config")).expect("client")
+    BoxApi::new(BoxClientConfig::new(key).expect("config")).expect("client")
 }
 
 #[tokio::test]
@@ -159,14 +159,20 @@ async fn live_sdk_file_round_trip() {
     let sdk_path = std::env::var("BOX_SDK_PATH").expect("BOX_SDK_PATH required");
     let api = client();
     assert!(
-        api.limits().await.expect("limits").can_start,
+        api.limits(&Default::default())
+            .await
+            .expect("limits")
+            .can_start,
         "account cannot start a box"
     );
     let created = api
-        .create(CreateBoxRequest {
-            no_env: Some(true),
-            ..CreateBoxRequest::ttl(300)
-        })
+        .create(
+            Some(CreateBoxRequest {
+                no_env: Some(true),
+                ..CreateBoxRequest::ttl(300)
+            }),
+            &Default::default(),
+        )
         .await
         .expect("create fixture box");
     let box_id = &created.box_.id;

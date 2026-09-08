@@ -41,7 +41,6 @@ async fn main() -> Result<()> {
 - [API reference](docs/api.md): all 59 endpoint operations and convenience helpers.
 - [Handoff receipts](docs/handoff.md): durable progress records, checkpoint references,
   application callbacks, and configurable storage.
-- [Migration guide](docs/migration.md): changes for existing callers.
 - [Testing](docs/testing.md): local checks, fixture verification, and live tests.
 
 Build searchable API documentation with method signatures and request/response
@@ -74,7 +73,7 @@ unlimited observation.
 
 GET requests retry transient failures up to three attempts by default and honor
 `Retry-After`. `BoxClientConfig` exposes attempts, exponential backoff and jitter.
-Diagnostics use application-filtered `tracing`; `Configuration` remains a compatibility alias.
+Diagnostics use application-filtered `tracing`.
 Mutations are never automatically retried. Responses have a configurable 64 MiB
 buffer limit. Error formatting and content-bearing model `Debug` output redact
 sensitive data.

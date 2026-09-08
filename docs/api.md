@@ -17,7 +17,7 @@ response types, and examples. See [the SDK guide](guide.md) for complete workflo
 | `boxes` | `GET /boxes` |
 | `command_raw` | `POST /boxes/{boxId}/commands` |
 | `command_status` | `GET /boxes/{boxId}/commands/{processId}` |
-| `create_with_options` | `POST /boxes` |
+| `create` | `POST /boxes` |
 | `create_environment` | `POST /environments` |
 | `create_webhook` | `POST /webhooks` |
 | `delete_box` | `DELETE /boxes/{boxId}` |
@@ -28,7 +28,7 @@ response types, and examples. See [the SDK guide](guide.md) for complete workflo
 | `delete_named_snapshot` | `DELETE /named-snapshots/{name}` |
 | `delete_snapshot` | `DELETE /snapshots/{snapshotId}` |
 | `delete_webhook` | `DELETE /webhooks/{webhookId}` |
-| `desktop_with` | `POST /boxes/{boxId}/desktop` |
+| `desktop` | `POST /boxes/{boxId}/desktop` |
 | `environments` | `GET /environments` |
 | `events` | `GET /boxes/{boxId}/events` |
 | `fork` | `POST /boxes/{boxId}/fork` |
@@ -41,9 +41,9 @@ response types, and examples. See [the SDK guide](guide.md) for complete workflo
 | `snapshot_file` | `GET /snapshots/{snapshotId}/files` |
 | `snapshot_tree` | `GET /snapshots/{snapshotId}/tree` |
 | `get_webhook` | `GET /webhooks/{webhookId}` |
-| `host_port_with` | `POST /boxes/{boxId}/host` |
+| `host_port` | `POST /boxes/{boxId}/host` |
 | `interrupt` | `POST /boxes/{boxId}/interrupt` |
-| `limits_with` | `GET /limits` |
+| `limits` | `GET /limits` |
 | `list_box_snapshots` | `GET /boxes/{boxId}/snapshots` |
 | `list_named_snapshots` | `GET /named-snapshots` |
 | `list_snapshots` | `GET /snapshots` |
@@ -72,10 +72,6 @@ response types, and examples. See [the SDK guide](guide.md) for complete workflo
 
 ## Convenience methods
 
-`create`, `create_with_idempotency`, `limits`, `desktop` and `host_port` provide
-shorter calls for common options. Their full variants expose organization scope,
-idempotency keys, desktop theme, and hosted-port visibility/title settings.
-
 `command` returns a completed command result. `command_raw` supports both
 completed and detached responses through `CommandResult`. Convert a detached
 process ID to a string when calling `command_status`.
@@ -90,7 +86,7 @@ process ID to a string when calling `command_status`.
 | `stop_and_remove_with` | Choose stop/archive or permanent deletion |
 | `wait_until_ready`, `wait_until_ready_with` | Wait for a Box to accept work |
 | `wait_until_idle`, `wait_until_idle_with` | Wait for a Box to become idle |
-| `wait_for_prompt`, `wait_for_prompt_done` | Wait for a prompt to finish or fail |
+| `wait_for_prompt` | Wait for a prompt to finish or fail |
 | `wait_for_desktop`, `wait_for_desktop_with` | Wait for a desktop URL |
 | `wait_for_deletion` | Observe deletion until completion or timeout |
 | `stream_events`, `stream_prompt` | Consume event pages as cancellable streams |

@@ -6,8 +6,9 @@ use std::time::Duration;
 
 use box_client::{
     exec_command, read_text, wait_until_ready, wait_until_ready_with, write_text, BoxApi,
-    BoxesQuery, CommandRequest, Configuration, CreateBoxRequest, Error, FileWriteRequest,
-    ResumeRequest, StopRequest, UpdateBoxRequest, WaitOptions,
+    BoxClientConfig, BoxesQuery, CommandRequest, CreateBoxRequest, CreateOptions, DesktopQuery,
+    Error, FileWriteRequest, HostPortRequest, ResumeRequest, StopRequest, UpdateBoxRequest,
+    WaitOptions,
 };
 use serde_json::json;
 use wiremock::matchers::{body_partial_json, header, method, path, query_param};
@@ -33,7 +34,7 @@ fn box_json(id: &str, state: &str) -> serde_json::Value {
 
 async fn api(server: &MockServer) -> BoxApi {
     BoxApi::new(
-        Configuration::new("box_test_key")
+        BoxClientConfig::new("box_test_key")
             .unwrap()
             .with_base_path(server.uri())
             .unwrap(),
@@ -74,7 +75,11 @@ async fn limits() {
         .mount(&server)
         .await;
 
-    let limits = api(&server).await.limits().await.unwrap();
+    let limits = api(&server)
+        .await
+        .limits(&Default::default())
+        .await
+        .unwrap();
     assert!(limits.ok);
     assert!(limits.can_start);
 }
@@ -125,7 +130,13 @@ async fn create_with_idempotency_key() {
 
     let created = api(&server)
         .await
-        .create_with_idempotency(CreateBoxRequest::ttl(1800), Some("job-42"))
+        .create(
+            Some(CreateBoxRequest::ttl(1800)),
+            &CreateOptions {
+                idempotency_key: Some("job-42".into()),
+                ..Default::default()
+            },
+        )
         .await
         .unwrap();
     assert_eq!(created.box_.id, "bx_23456789");
@@ -187,7 +198,14 @@ async fn extended_prompt_events_desktop_and_delete_routes() {
         .unwrap();
     assert_eq!(events.events[0].id.as_deref(), Some("ev_1"));
     let desktop = client
-        .desktop("bx_23456789", Some(1), Default::default())
+        .desktop(
+            "bx_23456789",
+            Some(&DesktopQuery {
+                vnc: Some(1),
+                ..Default::default()
+            }),
+            Some(Default::default()),
+        )
         .await
         .unwrap();
     assert!(desktop.desktop_url.is_some());
@@ -484,7 +502,16 @@ async fn host_port_and_ssh_key() {
         .await;
 
     let client = api(&server).await;
-    let host = client.host_port("bx_23456789", 3000).await.unwrap();
+    let host = client
+        .host_port(
+            "bx_23456789",
+            HostPortRequest {
+                port: 3000,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
     assert_eq!(host.port, Some(3000));
     let ssh = client
         .ssh_key("bx_23456789", "ssh-ed25519 AAAA")
@@ -496,7 +523,7 @@ async fn host_port_and_ssh_key() {
 #[tokio::test]
 async fn invalid_box_id_is_rejected() {
     // Invalid identifiers are rejected before sending a request.
-    let client = BoxApi::new(Configuration::new("box_test_key").unwrap()).unwrap();
+    let client = BoxApi::new(BoxClientConfig::new("box_test_key").unwrap()).unwrap();
     let err = client
         .command("bad", CommandRequest::new("true"))
         .await
@@ -542,7 +569,7 @@ async fn api_error_envelope() {
 
 #[tokio::test]
 async fn rejects_detached_command() {
-    let client = BoxApi::new(Configuration::new("box_test_key").unwrap()).unwrap();
+    let client = BoxApi::new(BoxClientConfig::new("box_test_key").unwrap()).unwrap();
     let err = client
         .command(
             "bx_23456789",

@@ -39,7 +39,7 @@ async fn invoke(api: &BoxApi, operation: &str, p: &Value) -> Result<Value> {
             .await?,
         ),
         "create" => encode(
-            api.create_with_options(
+            api.create(
                 p.get("createBoxRequest").cloned().map(decode),
                 &CreateOptions {
                     org: p["org"].as_str().map(str::to_owned),
@@ -75,7 +75,7 @@ async fn invoke(api: &BoxApi, operation: &str, p: &Value) -> Result<Value> {
         "deleteSnapshot" => encode(api.delete_snapshot(s("snapshotId")).await?),
         "deleteWebhook" => encode(api.delete_webhook(s("webhookId")).await?),
         "desktop" => encode(
-            api.desktop_with(
+            api.desktop(
                 s("boxId"),
                 Some(&decode(p.clone())),
                 p.get("desktopRequest").cloned().map(decode),
@@ -105,12 +105,12 @@ async fn invoke(api: &BoxApi, operation: &str, p: &Value) -> Result<Value> {
         "getSnapshotTree" => encode(api.snapshot_tree(s("snapshotId")).await?),
         "getWebhook" => encode(api.get_webhook(s("webhookId")).await?),
         "hostPort" => encode(
-            api.host_port_with(s("boxId"), decode(p["hostPortRequest"].clone()))
+            api.host_port(s("boxId"), decode(p["hostPortRequest"].clone()))
                 .await?,
         ),
         "interrupt" => encode(api.interrupt(s("boxId")).await?),
         "limits" => encode(
-            api.limits_with(&LimitsOptions {
+            api.limits(&LimitsOptions {
                 org: p["org"].as_str().map(str::to_owned),
                 team_id: p["teamId"].as_str().map(str::to_owned),
                 x_box_org: p["xBoxOrg"].as_str().map(str::to_owned),
@@ -336,7 +336,7 @@ async fn check(operation: &str) {
         }
     }
 }
-// Compare canonical wire fields, excluding internal model aliases.
+// Compare canonical wire fields across the Rust and TypeScript models.
 // Rust Option emits null; JSON has one numeric type while serde distinguishes integers/floats.
 fn without_nulls(value: Value) -> Value {
     match value {

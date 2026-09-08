@@ -55,7 +55,7 @@ use box_client::{
 };
 
 async fn run_job(api: &BoxApi) -> Result<String> {
-    let created = api.create(CreateBoxRequest::ttl(1800)).await?;
+    let created = api.create(Some(CreateBoxRequest::ttl(1800)), &Default::default()).await?;
     let box_id = &created.box_.id;
 
     let result = async {
@@ -257,16 +257,16 @@ or 409 `box_starting` / `box_securing`. Backoff includes jitter and respects
 `Retry-After`. A requested delay longer than the HTTP request timeout returns the
 error without retrying early. Waits and streams propagate exhausted errors.
 
-Mutations are never automatically retried. Use `create_with_idempotency` or the
-full create/fork options when you need to supply an idempotency key for your own
+Mutations are never automatically retried. Supply an idempotency key through
+`CreateOptions` or `ForkOptions` when calling `create` or `fork` for your own
 retry handling. Responses above the configured buffer limit return
 `Error::ResponseTooLarge`, including errors and chunked downloads.
 
 
 ## Configure retries and logging
 
-`BoxClientConfig` is the public configuration type. `Configuration` remains an
-alias for existing callers. `BoxApi::config()` exposes the active configuration.
+`BoxClientConfig` is the public configuration type. `BoxApi::config()` exposes
+the active configuration.
 Retry settings apply to GET requests; mutations and handoff action callbacks are
 never automatically retried.
 

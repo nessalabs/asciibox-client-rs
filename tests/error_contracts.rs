@@ -87,7 +87,7 @@ async fn transport_errors_strip_private_urls() {
     let address = listener.local_addr().unwrap();
     drop(listener);
     let api = BoxApi::new(
-        Configuration::new("fixture-only")
+        BoxClientConfig::new("fixture-only")
             .unwrap()
             .with_base_path(format!("http://{address}/secret-url-segment"))
             .unwrap(),
@@ -126,7 +126,7 @@ async fn chunked_response_cap_does_not_require_content_length() {
         socket.write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n10\r\n0123456789abcdef\r\n10\r\n0123456789abcdef\r\n0\r\n\r\n").await.unwrap();
     });
     let api = BoxApi::new(
-        Configuration::new("fixture-only")
+        BoxClientConfig::new("fixture-only")
             .unwrap()
             .with_base_path(format!("http://{address}"))
             .unwrap()

@@ -17,7 +17,7 @@ fn fixture(name: &str) -> Value {
 }
 fn client(server: &MockServer) -> BoxApi {
     BoxApi::new(
-        Configuration::new("test-key")
+        BoxClientConfig::new("test-key")
             .unwrap()
             .with_base_path(server.uri())
             .unwrap(),
@@ -492,7 +492,7 @@ async fn response_cap_applies_to_success_and_error_bodies() {
             .mount(&server)
             .await;
         let api = BoxApi::new(
-            Configuration::new("test")
+            BoxClientConfig::new("test")
                 .unwrap()
                 .with_base_path(server.uri())
                 .unwrap()
@@ -520,7 +520,11 @@ async fn excessive_retry_after_returns_error_without_retrying_early() {
         .mount(&server)
         .await;
     assert_eq!(
-        client(&server).limits().await.unwrap_err().status(),
+        client(&server)
+            .limits(&Default::default())
+            .await
+            .unwrap_err()
+            .status(),
         Some(429)
     );
 }

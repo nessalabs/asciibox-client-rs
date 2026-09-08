@@ -64,13 +64,8 @@ impl BoxApi {
         self.request("me", Method::GET, "/me").send().await
     }
 
-    /// Read account limits and balances using the configured organization.
-    pub async fn limits(&self) -> Result<LimitsResponse> {
-        self.limits_with(&LimitsOptions::default()).await
-    }
-
     /// Read limits for an explicit organization or team scope.
-    pub async fn limits_with(&self, options: &LimitsOptions) -> Result<LimitsResponse> {
+    pub async fn limits(&self, options: &LimitsOptions) -> Result<LimitsResponse> {
         self.request_with_org(
             "limits",
             Method::GET,
@@ -92,29 +87,8 @@ impl BoxApi {
             .await
     }
 
-    /// Create a Box with the supplied settings.
-    pub async fn create(&self, request: CreateBoxRequest) -> Result<CreateBoxResponse> {
-        self.create_with_idempotency(request, None).await
-    }
-
-    /// Create with an `Idempotency-Key` so lost responses can be safely retried.
-    pub async fn create_with_idempotency(
-        &self,
-        request: CreateBoxRequest,
-        idempotency_key: Option<&str>,
-    ) -> Result<CreateBoxResponse> {
-        self.create_with_options(
-            Some(request),
-            &CreateOptions {
-                idempotency_key: idempotency_key.map(str::to_owned),
-                ..Default::default()
-            },
-        )
-        .await
-    }
-
     /// Create a Box with optional body, organization scope, and idempotency key.
-    pub async fn create_with_options(
+    pub async fn create(
         &self,
         request: Option<CreateBoxRequest>,
         options: &CreateOptions,
@@ -318,26 +292,8 @@ impl BoxApi {
         .await
     }
 
-    /// Request desktop access with optional VNC settings.
-    pub async fn desktop(
-        &self,
-        box_id: &str,
-        vnc: Option<u8>,
-        request: DesktopRequest,
-    ) -> Result<DesktopResponse> {
-        self.desktop_with(
-            box_id,
-            Some(&DesktopQuery {
-                vnc,
-                ..Default::default()
-            }),
-            Some(request),
-        )
-        .await
-    }
-
     /// Request desktop access with connection and theme options.
-    pub async fn desktop_with(
+    pub async fn desktop(
         &self,
         box_id: &str,
         query: Option<&DesktopQuery>,
@@ -540,20 +496,8 @@ impl BoxApi {
         .await
     }
 
-    /// Expose a port with default access settings.
-    pub async fn host_port(&self, box_id: &str, port: u16) -> Result<HostPortResponse> {
-        self.host_port_with(
-            box_id,
-            HostPortRequest {
-                port,
-                ..Default::default()
-            },
-        )
-        .await
-    }
-
     /// Expose a port with explicit visibility and title options.
-    pub async fn host_port_with(
+    pub async fn host_port(
         &self,
         box_id: &str,
         request: HostPortRequest,

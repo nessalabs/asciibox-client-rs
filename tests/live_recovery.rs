@@ -81,7 +81,7 @@ async fn live_handoff_reconciles_completed_launch_and_cleans_up() -> ProbeResult
     let directory = PathBuf::from(std::env::var("BOX_TEST_STATE_DIR")?);
     std::fs::create_dir_all(&directory)?;
     let api = api();
-    if !api.limits().await?.can_start {
+    if !api.limits(&Default::default()).await?.can_start {
         return Err("account cannot start a fixture Box".into());
     }
     let unique = format!("rust-recovery-{:016x}", fastrand::u64(..));
@@ -92,9 +92,9 @@ async fn live_handoff_reconciles_completed_launch_and_cleans_up() -> ProbeResult
             // Keep creation keys even if the response is lost, so an operator can
             // reconcile the exact create request without inventing another key.
             std::fs::write(directory.join(format!("{creation_key}.create-key")), &creation_key)?;
-            let created = api.create_with_idempotency(CreateBoxRequest {
+            let created = api.create(Some(CreateBoxRequest {
                 no_env: Some(true), ..CreateBoxRequest::ttl(300)
-            }, Some(&creation_key)).await?;
+            }), &box_client::CreateOptions { idempotency_key: Some(creation_key.clone()), ..Default::default() }).await?;
             boxes.push(created.box_.id.clone());
             eprintln!("created {suffix} fixture={}", created.box_.id);
             std::fs::write(directory.join(format!("{unique}.boxes.json")), serde_json::to_vec(&boxes)?)?;

@@ -71,7 +71,9 @@ async fn retry_after_survives_exhaustion_and_mutations_are_not_replayed() {
         let error = if verb == "GET" {
             api.api_keys().await.unwrap_err()
         } else {
-            api.create(CreateBoxRequest::ttl(300)).await.unwrap_err()
+            api.create(Some(CreateBoxRequest::ttl(300)), &Default::default())
+                .await
+                .unwrap_err()
         };
         assert_eq!(error.retry_after(), Some(Duration::from_secs(120)));
         assert!(error.is_retryable());
