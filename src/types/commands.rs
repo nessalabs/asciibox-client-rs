@@ -1,20 +1,20 @@
 use super::*;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum CommandResult {
     Completed(CommandResponse),
     Started(CommandStartedResponse),
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandStatusQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tail_bytes: Option<u32>,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandStartedResponse {
     pub ok: bool,
@@ -52,7 +52,7 @@ impl fmt::Debug for CommandStartedResponse {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandStatusResponse {
     pub ok: bool,

@@ -2,11 +2,13 @@
 
 Rust client for the [Ascii Box Public API v1](https://docs.ascii.dev/box/api/v1).
 
-Shaped like TypeScript [`@asciidev/box-sdk`](https://www.npmjs.com/package/@asciidev/box-sdk) `BoxApi`, including lifecycle, command exec (synchronous and detached), prompts/events, files, desktop/host/SSH, snapshots, environments, and polling helpers.
+Shaped like TypeScript [`@asciidev/box-sdk`](https://www.npmjs.com/package/@asciidev/box-sdk) `BoxApi`, including lifecycle, command exec (synchronous and detached), prompts/events, files, desktop/host/SSH, snapshots, named snapshots, environments, account administration, polling and cancellable event streams. Covers all 59 operations in SDK 0.0.34.
 
 Crate name on Cargo: `box_client`.
 
 ## Install
+
+Requires Rust 1.89 or newer.
 
 ```toml
 box_client = { git = "https://github.com/nessalabs/asciibox-client-rs" }
@@ -47,13 +49,17 @@ println!("{} boxes", list.boxes.len());
 | `list_snapshots` / `list_box_snapshots` / `latest_box_snapshot` | Snapshot discovery |
 | `snapshot_tree` / `snapshot_download` / `snapshot_file` / `delete_snapshot` | Snapshot access and deletion |
 | `environments` / `create_environment` / `update_environment` / `delete_environment` | Environment lifecycle |
+| `stream_events` / `stream_prompt` | Lazy, cancellable event streams |
+| Named snapshot methods | Save, get, list and delete named snapshots |
+| Granular environment methods | Variables, secret files, repositories and upgrades |
+| `api_keys` / `api_key_usage` / retention / webhooks / secrets / repositories | Account administration |
 | `delete_box` / `interrupt` | Destructive cleanup and interruption |
 | `wait_until_idle` / `wait_for_prompt` | Bounded polling with TypeScript defaults |
 | `get_deletion_operation` / `wait_for_deletion` | Observe background deletion completion |
 
 Destructive delete methods send the API's matching confirmation header and are never retried. They return an accepted operation; use `wait_for_deletion` to verify completion. A missing box is not proof that backend deletion finished.
 
-This is the supported runtime subset, not a full SDK port. See [the exact compatibility matrix and migration notes](docs/parity.md).
+See [the complete endpoint/helper matrix, language differences and migration notes](docs/parity.md).
 
 ## Defaults (timeouts)
 

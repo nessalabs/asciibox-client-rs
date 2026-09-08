@@ -13,27 +13,44 @@ pub enum PromptProvider {
 #[serde(rename_all = "camelCase")]
 pub struct PromptRequest {
     pub provider: PromptProvider,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning_effort: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_nullable",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub model: Option<Option<String>>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_nullable",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub reasoning_effort: Option<Option<String>>,
     pub prompt: String,
 }
 impl fmt::Debug for PromptRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PromptRequest")
             .field("provider", &self.provider)
-            .field("model_len", &self.model.as_ref().map(String::len))
+            .field(
+                "model_len",
+                &self
+                    .model
+                    .as_ref()
+                    .map(|value| value.as_ref().map(String::len)),
+            )
             .field(
                 "reasoning_effort_len",
-                &self.reasoning_effort.as_ref().map(String::len),
+                &self
+                    .reasoning_effort
+                    .as_ref()
+                    .map(|value| value.as_ref().map(String::len)),
             )
             .field("prompt_len", &self.prompt.len())
             .finish()
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PromptResponse {
     pub ok: bool,
@@ -68,7 +85,7 @@ impl fmt::Debug for PromptResponse {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PromptRunResponse {
     pub ok: bool,
@@ -90,7 +107,7 @@ impl fmt::Debug for PromptRunResponse {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PromptRun {
     pub id: String,
@@ -123,7 +140,7 @@ impl fmt::Debug for PromptRun {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BoxEvent {
     pub id: Option<String>,
@@ -146,7 +163,7 @@ impl fmt::Debug for BoxEvent {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventsResponse {
     pub ok: bool,
@@ -183,7 +200,7 @@ impl fmt::Debug for DesktopRequest {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopResponse {
     pub ok: bool,
@@ -227,7 +244,7 @@ impl PromptRequest {
         }
     }
 }
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EventsQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,

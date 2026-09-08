@@ -75,14 +75,14 @@ async fn ts_limits() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "ok": true,
             "canStart": true,
-            "activeBoxes": 0
+            "activeBoxes": 0, "maxActiveBoxes": 100, "billingStatus":"active", "type":"account.limits"
         })))
         .mount(&server)
         .await;
 
     let limits = api(&server).await.limits().await.unwrap();
     assert!(limits.ok);
-    assert_eq!(limits.extra.get("canStart"), Some(&json!(true)));
+    assert!(limits.can_start);
 }
 
 // --- Lifecycle (TS: boxes / create / get / update / stop / resume) ---
@@ -444,7 +444,7 @@ async fn ts_read_text_write_text_utf8() {
         })))
         .mount(&server)
         .await;
-    Mock::given(method("POST"))
+    Mock::given(method("PUT"))
         .and(path("/boxes/bx_23456789/files"))
         .and(body_partial_json(json!({
             "path": "notes/result.txt",
@@ -481,9 +481,7 @@ async fn ts_host_port_and_ssh_key() {
         .await;
     Mock::given(method("POST"))
         .and(path("/boxes/bx_23456789/sshkey"))
-        .and(body_partial_json(
-            json!({ "publicKey": "ssh-ed25519 AAAA" }),
-        ))
+        .and(body_partial_json(json!({ "key": "ssh-ed25519 AAAA" })))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "ok": true, "type": "ssh_key.configured", "success": true,
             "machineIp": "203.0.113.10", "sshUser": "user"
@@ -581,7 +579,7 @@ async fn create_request_ttl_serializes_like_ts() {
 #[tokio::test]
 async fn write_file_raw_matches_ts_shape() {
     let server = MockServer::start().await;
-    Mock::given(method("POST"))
+    Mock::given(method("PUT"))
         .and(path("/boxes/bx_23456789/files"))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(json!({ "ok": true, "success": true })),

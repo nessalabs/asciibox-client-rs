@@ -61,10 +61,10 @@ pub async fn stop_and_remove_with(
     if delete {
         api.delete_box(box_id)
             .await
-            .map(StopOrDeleteResponse::Deleting)
+            .map(|response| StopOrDeleteResponse::Deleting(std::boxed::Box::new(response)))
     } else {
         api.stop(box_id, None)
             .await
-            .map(StopOrDeleteResponse::Stopped)
+            .map(|response| StopOrDeleteResponse::Stopped(std::boxed::Box::new(response)))
     }
 }

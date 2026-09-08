@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::time::Duration;
 
-use tokio::time::{sleep, sleep_until, timeout_at, Instant};
+use tokio::time::{sleep, timeout_at, Instant};
 
 use crate::client::BoxApi;
 use crate::error::{Error, Result};
@@ -31,6 +31,50 @@ impl WaitOptions {
     }
 }
 
+/// Shared cooperative budget for waits and event streams.
+pub(crate) struct PollBudget {
+    deadline: Option<Instant>,
+}
+impl PollBudget {
+    pub(crate) fn new(timeout: Duration) -> Result<Self> {
+        let deadline = if timeout.is_zero() {
+            None
+        } else {
+            Some(
+                Instant::now()
+                    .checked_add(timeout)
+                    .ok_or_else(|| Error::Config("wait timeout is too large".into()))?,
+            )
+        };
+        Ok(Self { deadline })
+    }
+
+    pub(crate) async fn run<T>(
+        &self,
+        resource_id: &str,
+        state: &str,
+        future: impl Future<Output = Result<T>>,
+    ) -> Result<T> {
+        let expired = || Error::WaitTimeout {
+            box_id: resource_id.into(),
+            last_state: state.into(),
+        };
+        match self.deadline {
+            None => future.await,
+            Some(end) => {
+                if Instant::now() >= end {
+                    return Err(expired());
+                }
+                let result = timeout_at(end, future).await.map_err(|_| expired())?;
+                if Instant::now() >= end {
+                    return Err(expired());
+                }
+                result
+            }
+        }
+    }
+}
+
 enum Poll<T> {
     Ready(T),
     Pending(String),
@@ -41,50 +85,21 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<Poll<T>>>,
 {
-    let deadline = if opts.timeout.is_zero() {
-        None
-    } else {
-        Some(
-            Instant::now()
-                .checked_add(opts.timeout)
-                .ok_or_else(|| Error::Config("wait timeout is too large".into()))?,
-        )
-    };
+    let budget = PollBudget::new(opts.timeout)?;
     let mut last_state = "not yet observed".to_string();
     loop {
-        let timed_out = || Error::WaitTimeout {
-            box_id: resource_id.into(),
-            last_state: last_state.clone(),
-        };
-        let result = match deadline {
-            Some(end) => {
-                if Instant::now() >= end {
-                    return Err(timed_out());
-                }
-                let result = timeout_at(end, fetch()).await.map_err(|_| timed_out())?;
-                // A ready response must not override an already exhausted budget.
-                if Instant::now() >= end {
-                    return Err(timed_out());
-                }
-                result
-            }
-            None => fetch().await,
-        };
+        let result = budget.run(resource_id, &last_state, fetch()).await;
         match result {
             Ok(Poll::Ready(value)) => return Ok(value),
             Ok(Poll::Pending(state)) => last_state = state,
             Err(error) => return Err(error),
         }
-        match deadline {
-            Some(end) => {
-                let wake = Instant::now()
-                    .checked_add(opts.poll_interval)
-                    .unwrap_or(end)
-                    .min(end);
-                sleep_until(wake).await;
-            }
-            None => sleep(opts.poll_interval).await,
-        }
+        budget
+            .run(resource_id, &last_state, async {
+                sleep(opts.poll_interval).await;
+                Ok(())
+            })
+            .await?;
     }
 }
 
@@ -215,6 +230,8 @@ pub async fn wait_for_desktop_with(
 
 /// Wait for backend deletion completion. A hidden box or `blocked` operation is
 /// not completion; those operations remain pending until completed or timed out.
+/// The five-minute default is a caller budget, not a service completion guarantee.
+/// Pass a longer `WaitOptions` timeout, or zero for unlimited observation.
 pub async fn wait_for_deletion(
     api: &BoxApi,
     operation_id: &str,
