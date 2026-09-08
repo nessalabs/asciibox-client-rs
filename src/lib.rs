@@ -1,8 +1,8 @@
 //! Rust client for the [Ascii Box Public API v1](https://docs.ascii.dev/box/api/v1).
 //!
-//! Implements the documented supported subset of TypeScript `@asciidev/box-sdk`:
-//! account, lifecycle, commands, prompts/events, files, desktop, snapshots,
-//! environments, and bounded polling. See `docs/parity.md` for exact coverage.
+//! Covers all 59 BoxApi operations and helpers from `@asciidev/box-sdk@0.0.34`,
+//! including administration, environments, snapshots and cancellable streams.
+//! See `docs/parity.md` for mappings and intentional transport differences.
 //!
 //! ```no_run
 //! use box_client::{BoxApi, Configuration, CreateBoxRequest, wait_until_ready};
@@ -22,8 +22,11 @@ mod client;
 mod config;
 mod error;
 mod helpers;
+mod stream;
 mod types;
 mod wait;
+pub use stream::{stream_events, stream_prompt, StreamEventsOptions, StreamPromptOptions};
+pub use tokio_util::sync::CancellationToken;
 
 pub use client::BoxApi;
 pub use config::Configuration;

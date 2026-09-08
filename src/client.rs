@@ -1,3 +1,5 @@
+mod administration;
+
 use std::time::Duration;
 
 use reqwest::{Client, Method, RequestBuilder, StatusCode};
@@ -66,7 +68,15 @@ impl BoxApi {
     }
 
     pub async fn limits(&self) -> Result<LimitsResponse> {
-        self.get_json("/limits").await
+        self.limits_with(&LimitsOptions::default()).await
+    }
+
+    pub async fn limits_with(&self, options: &LimitsOptions) -> Result<LimitsResponse> {
+        let url = format!("{}/limits", self.base);
+        let req = self
+            .base_request_with_org(Method::GET, &url, options.x_box_org.as_deref())
+            .query(options);
+        self.execute(req, true).await
     }
 
     // --- Lifecycle ---
@@ -88,14 +98,33 @@ impl BoxApi {
         request: CreateBoxRequest,
         idempotency_key: Option<&str>,
     ) -> Result<CreateBoxResponse> {
+        self.create_with_options(
+            Some(request),
+            &CreateOptions {
+                idempotency_key: idempotency_key.map(str::to_owned),
+                ..Default::default()
+            },
+        )
+        .await
+    }
+
+    /// Full TypeScript create options, including per-call organization scope.
+    pub async fn create_with_options(
+        &self,
+        request: Option<CreateBoxRequest>,
+        options: &CreateOptions,
+    ) -> Result<CreateBoxResponse> {
         let url = format!("{}/boxes", self.base);
-        let mut req = self.base_request(Method::POST, &url).json(&request);
-        if let Some(key) = idempotency_key {
-            if !key.is_empty() {
-                req = req.header("Idempotency-Key", key);
-            }
-        }
-        // Not auto-retried (billing); caller owns retries via the key.
+        let req = self.base_request_with_org(Method::POST, &url, options.x_box_org.as_deref());
+        let req = json_body(req, request.as_ref());
+        let req = match &options.org {
+            Some(org) => req.query(&[("org", org)]),
+            None => req,
+        };
+        let req = match &options.idempotency_key {
+            Some(key) => req.header("Idempotency-Key", key),
+            None => req,
+        };
         self.execute(req, false).await
     }
 
@@ -115,8 +144,8 @@ impl BoxApi {
         request: Option<StopRequest>,
     ) -> Result<BoxActionResponse> {
         let path = format!("/boxes/{}/stop", validate_box_id(box_id)?);
-        let body = request.unwrap_or_default();
-        self.send_body(Method::POST, &path, &body, false).await
+        let req = self.base_request(Method::POST, &format!("{}{path}", self.base));
+        self.execute(json_body(req, request.as_ref()), false).await
     }
 
     pub async fn resume(
@@ -125,8 +154,8 @@ impl BoxApi {
         request: Option<ResumeRequest>,
     ) -> Result<BoxActionResponse> {
         let path = format!("/boxes/{}/resume", validate_box_id(box_id)?);
-        let body = request.unwrap_or_default();
-        self.send_body(Method::POST, &path, &body, false).await
+        let req = self.base_request(Method::POST, &format!("{}{path}", self.base));
+        self.execute(json_body(req, request.as_ref()), false).await
     }
 
     /// Permanently delete a box and its exclusively-owned snapshot chains.
@@ -142,8 +171,11 @@ impl BoxApi {
 
     pub async fn interrupt(&self, box_id: &str) -> Result<BoxActionResponse> {
         let path = format!("/boxes/{}/interrupt", validate_box_id(box_id)?);
-        self.send_body(Method::POST, &path, &EmptyRequest {}, false)
-            .await
+        self.execute(
+            self.base_request(Method::POST, &format!("{}{path}", self.base)),
+            false,
+        )
+        .await
     }
 
     // --- In-box ops ---
@@ -236,12 +268,30 @@ impl BoxApi {
         vnc: Option<u8>,
         request: DesktopRequest,
     ) -> Result<DesktopResponse> {
-        let path = format!("/boxes/{}/desktop", validate_box_id(box_id)?);
-        let url = format!("{}{path}", self.base);
-        let mut req = self.base_request(Method::POST, &url).json(&request);
-        if let Some(vnc) = vnc {
-            req = req.query(&[("vnc", vnc)]);
-        }
+        self.desktop_with(
+            box_id,
+            Some(&DesktopQuery {
+                vnc,
+                ..Default::default()
+            }),
+            Some(request),
+        )
+        .await
+    }
+
+    pub async fn desktop_with(
+        &self,
+        box_id: &str,
+        query: Option<&DesktopQuery>,
+        request: Option<DesktopRequest>,
+    ) -> Result<DesktopResponse> {
+        let url = format!("{}/boxes/{}/desktop", self.base, validate_box_id(box_id)?);
+        let req = self.base_request(Method::POST, &url);
+        let req = json_body(req, request.as_ref());
+        let req = match query {
+            Some(q) => req.query(q),
+            None => req,
+        };
         self.execute(req, false).await
     }
 
@@ -373,13 +423,27 @@ impl BoxApi {
     ) -> Result<FileWriteResponse> {
         validate_file_path(&request.path)?;
         let path = format!("/boxes/{}/files", validate_box_id(box_id)?);
-        self.send_body(Method::POST, &path, &request, false).await
+        self.send_body(Method::PUT, &path, &request, false).await
     }
 
     pub async fn host_port(&self, box_id: &str, port: u16) -> Result<HostPortResponse> {
+        self.host_port_with(
+            box_id,
+            HostPortRequest {
+                port,
+                ..Default::default()
+            },
+        )
+        .await
+    }
+
+    pub async fn host_port_with(
+        &self,
+        box_id: &str,
+        request: HostPortRequest,
+    ) -> Result<HostPortResponse> {
         let path = format!("/boxes/{}/host", validate_box_id(box_id)?);
-        self.send_body(Method::POST, &path, &HostPortRequest { port }, false)
-            .await
+        self.send_body(Method::POST, &path, &request, false).await
     }
 
     pub async fn ssh_key(
@@ -402,12 +466,21 @@ impl BoxApi {
     // --- HTTP core ---
 
     fn base_request(&self, method: Method, url: &str) -> RequestBuilder {
+        self.base_request_with_org(method, url, None)
+    }
+
+    fn base_request_with_org(
+        &self,
+        method: Method,
+        url: &str,
+        org: Option<&str>,
+    ) -> RequestBuilder {
         let mut req = self
             .http
             .request(method, url)
             .bearer_auth(&self.config.access_token)
             .header("Accept", "application/json");
-        if let Some(org) = &self.config.org {
+        if let Some(org) = org.or(self.config.org.as_deref()) {
             req = req.header("X-Box-Org", org);
         }
         req
@@ -478,6 +551,13 @@ impl BoxApi {
     }
 }
 
+fn json_body<B: Serialize>(request: RequestBuilder, body: Option<&B>) -> RequestBuilder {
+    match body {
+        Some(body) => request.json(body),
+        None => request.header("Content-Type", "application/json"),
+    }
+}
+
 async fn send_once(req: RequestBuilder, limit: usize) -> (Result<Vec<u8>>, Option<Duration>) {
     let mut response = match req.send().await {
         Ok(res) => res,
@@ -537,7 +617,7 @@ fn map_error(status: StatusCode, bytes: &[u8]) -> Error {
             .and_then(|e| e.message.clone())
             .or(body.message)
             .unwrap_or_else(|| truncate_lossy(bytes));
-        let details = body.error.and_then(|e| e.details);
+        let details = body.error.and_then(|e| e.details).or(body.details);
         return Error::Api {
             status: status.as_u16(),
             code,
@@ -546,7 +626,10 @@ fn map_error(status: StatusCode, bytes: &[u8]) -> Error {
             details,
         };
     }
-    Error::Unexpected(format!("HTTP {status} — {}", truncate_lossy(bytes)))
+    Error::HttpStatus {
+        status: status.as_u16(),
+        body: truncate_lossy(bytes),
+    }
 }
 
 fn truncate_lossy(bytes: &[u8]) -> String {

@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotSummary {
     pub id: String,
@@ -41,7 +41,7 @@ impl fmt::Debug for SnapshotSummary {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotListResponse {
     pub ok: bool,
@@ -64,7 +64,7 @@ impl fmt::Debug for SnapshotListResponse {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotLatestResponse {
     pub ok: bool,
@@ -84,7 +84,7 @@ impl fmt::Debug for SnapshotLatestResponse {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotTreeEntry {
     pub path: String,
@@ -103,7 +103,7 @@ impl fmt::Debug for SnapshotTreeEntry {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotTreeResponse {
     pub ok: bool,
@@ -140,7 +140,7 @@ impl fmt::Debug for SnapshotTreeResponse {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotChunk {
     pub snapshot_id: String,
@@ -168,7 +168,7 @@ impl fmt::Debug for SnapshotChunk {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotInventory {
     pub r2_key: String,
@@ -186,7 +186,7 @@ impl fmt::Debug for SnapshotInventory {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotDownloadResponse {
     pub ok: bool,
@@ -220,7 +220,7 @@ impl fmt::Debug for SnapshotDownloadResponse {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeletionOperation {
     pub id: String,
@@ -253,7 +253,7 @@ impl fmt::Debug for DeletionOperation {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeletionOperationResponse {
     pub ok: bool,
@@ -274,7 +274,7 @@ impl fmt::Debug for DeletionOperationResponse {
 }
 
 /// Shared options for global and per-box snapshot history.
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SnapshotsQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
@@ -286,6 +286,6 @@ pub struct SnapshotsQuery {
 /// The real response for each branch of `stop_and_remove_with`.
 #[derive(Debug, Clone)]
 pub enum StopOrDeleteResponse {
-    Stopped(BoxActionResponse),
-    Deleting(DeletionOperationResponse),
+    Stopped(std::boxed::Box<BoxActionResponse>),
+    Deleting(std::boxed::Box<DeletionOperationResponse>),
 }

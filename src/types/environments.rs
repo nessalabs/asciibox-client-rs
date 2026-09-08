@@ -15,7 +15,7 @@ impl fmt::Debug for SecretFile {
     }
 }
 
-#[derive(Clone, Deserialize, Default)]
+#[derive(Clone, Deserialize, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SelectedRepository {
     pub id: Option<u64>,
@@ -65,7 +65,7 @@ impl fmt::Debug for SelectedRepository {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BoxEnvironmentVersionSummary {
     pub id: String,
@@ -87,7 +87,7 @@ impl fmt::Debug for BoxEnvironmentVersionSummary {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BoxEnvironment {
     pub id: String,
@@ -223,7 +223,7 @@ impl fmt::Debug for UpdateBoxEnvironmentRequest {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BoxEnvironmentListResponse {
     pub environments: Vec<BoxEnvironment>,
@@ -239,7 +239,7 @@ impl fmt::Debug for BoxEnvironmentListResponse {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BoxEnvironmentResponse {
     pub success: bool,

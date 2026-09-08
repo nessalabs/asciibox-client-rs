@@ -4,24 +4,38 @@
 
 ```bash
 cargo fmt -- --check
-cargo test --locked
-cargo clippy --locked --all-targets -- -D warnings
+cargo test
+cargo clippy --all-targets -- -D warnings
 git diff --check
 ```
+
+These commands work in a fresh checkout: this library intentionally does not
+track `Cargo.lock`, so do not add `--locked` before generating one. CI also checks
+Rust 1.89 and reruns the Node fixture verification against the pinned SDK.
 
 Unit tests cover configuration, validation, error formatting and core models.
 `tests/parity_ts.rs` preserves the original API/helper contracts.
 `tests/runtime_regressions.rs` adds targeted tests for the review findings, using
-non-sensitive fixtures under `tests/fixtures/`. No credential is needed.
+non-sensitive fixtures under `tests/fixtures/`. `tests/sdk_operations.rs` checks all
+59 SDK operations with full/minimal requests and responses, API failures and non-retried
+mutations. `tests/streams.rs` covers cursor advancement, page draining, cancellation
+and deadlines. `tests/error_contracts.rs` checks non-JSON failures, decoding
+redaction, chunked response caps and nullable/fractional wire values. No credential
+is needed.
 
 To independently validate those fixtures and the corrected request shapes against
 the published SDK, unpack `@asciidev/box-sdk@0.0.34` and run:
 
 ```bash
+node scripts/sdk_fixtures.cjs /path/to/unpacked/package
 node tests/verify_ts_contract.cjs /path/to/unpacked/package
 ```
 
-The Node script uses the package's actual converters and request builders. It
+Regenerate the checked-in operation fixtures by adding `--write` to the first
+command, then review the diff. The pinned SDK package ships no upstream tests;
+these are our reproducible checks against its actual implementation.
+
+The Node scripts use the package's actual converters and request builders. It
 checks nested wire values and request options without making API requests. The
 package path is an argument; no machine-specific path or dependency is checked in.
 
@@ -40,13 +54,24 @@ cargo test --test live live_runtime_read_contracts -- --ignored
 cargo test --test live live_get_and_exec_existing_box -- --ignored
 # Creates, updates and deletes only its own uniquely named environment
 BOX_TEST_MUTATIONS=1 cargo test --test live live_environment_round_trip -- --ignored
+# Creates one box; verifies Rust/SDK PUT/read parity; deletes it and waits for completion
+BOX_TEST_MUTATIONS=1 BOX_SDK_PATH=/path/to/unpacked/package cargo test --test live live_sdk_file_round_trip -- --ignored
 ```
 
 `live_runtime_read_contracts` reads at most one snapshot tree/download manifest and
 prints counts only. Without a snapshot fixture those routes are skipped. The
 environment mutation test cleans up its fixture even if the update/read checks
-fail, then verifies that the environment is absent. None of these tests creates a
-box or deletes an existing snapshot. For deletion lifecycle checks, a returned
+fail, then verifies that the environment is absent. The file round-trip test creates one disposable box with a five-minute TTL, writes
+a fixed scratch path inside that box, reads/writes through both clients, and waits
+for its permanent deletion even if the file check fails. It prints the file
+result before observing cleanup so a deletion timeout cannot hide that outcome.
+The cleanup wait defaults to five minutes: this is a test budget, not a Box
+completion guarantee. A documented `blocked` state may outlast that budget and
+fail the live test without proving either an SDK mismatch or a service defect.
+Use the returned operation ID to check again; only `completed` confirms cleanup.
+See [Box data-retention and deletion](https://docs.ascii.dev/box/data-retention).
+No live test deletes a
+pre-existing snapshot. For deletion lifecycle checks, a returned
 operation must be observed as `completed`; box invisibility alone is insufficient.
 
 ## Remaining verification scope

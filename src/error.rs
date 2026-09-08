@@ -15,7 +15,7 @@ pub enum Error {
     Config(String),
 
     #[error("http: {0}")]
-    Http(#[from] reqwest::Error),
+    Http(reqwest::Error),
 
     /// Server API failure. `Display` shows status/code/request_id only.
     #[error("api {status}: {code} (request_id={request_id})")]
@@ -29,6 +29,13 @@ pub enum Error {
 
     #[error("response exceeds configured limit of {limit} bytes")]
     ResponseTooLarge { limit: usize },
+
+    /// Non-JSON or non-envelope HTTP error; the HTTP status remains inspectable.
+    #[error("HTTP {status} (body redacted)")]
+    HttpStatus { status: u16, body: String },
+
+    #[error("event stream aborted")]
+    Aborted,
 
     #[error("unexpected response (body redacted)")]
     Unexpected(String),
@@ -46,8 +53,16 @@ pub enum Error {
     #[error("box {box_id} entered error state")]
     BoxFailed { box_id: String },
 
-    #[error("serde: {0}")]
+    #[error("response decoding failed (details redacted)")]
     Serde(#[from] serde_json::Error),
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(error: reqwest::Error) -> Self {
+        // URLs may include signed tokens or private paths. Keep transport metadata
+        // and the error source without accidentally exposing the request URL.
+        Self::Http(error.without_url())
+    }
 }
 
 impl fmt::Debug for Error {
@@ -91,7 +106,17 @@ impl fmt::Debug for Error {
             Self::BoxFailed { box_id } => {
                 f.debug_struct("BoxFailed").field("box_id", box_id).finish()
             }
-            Self::Serde(e) => f.debug_tuple("Serde").field(e).finish(),
+            Self::Serde(e) => f
+                .debug_struct("Serde")
+                .field("line", &e.line())
+                .field("column", &e.column())
+                .finish(),
+            Self::HttpStatus { status, body } => f
+                .debug_struct("HttpStatus")
+                .field("status", status)
+                .field("body_len", &body.len())
+                .finish(),
+            Self::Aborted => f.write_str("Aborted"),
         }
     }
 }
@@ -111,13 +136,14 @@ impl Error {
                 _ => false,
             },
             Error::Http(e) => e.is_timeout() || e.is_connect(),
+            Error::HttpStatus { status, .. } => matches!(status, 429 | 502..=504),
             _ => false,
         }
     }
 
     pub fn status(&self) -> Option<u16> {
         match self {
-            Error::Api { status, .. } => Some(*status),
+            Error::Api { status, .. } | Error::HttpStatus { status, .. } => Some(*status),
             Error::Http(e) => e.status().map(|s| s.as_u16()),
             _ => None,
         }
@@ -143,7 +169,7 @@ impl Error {
     /// Raw unexpected response body (truncated), if this is `Unexpected`.
     pub fn unexpected_body(&self) -> Option<&str> {
         match self {
-            Error::Unexpected(body) => Some(body.as_str()),
+            Error::Unexpected(body) | Error::HttpStatus { body, .. } => Some(body.as_str()),
             _ => None,
         }
     }

@@ -146,3 +146,58 @@ async fn live_environment_round_trip() {
         .any(|value| value.id == env.id));
     result.expect("environment round trip");
 }
+
+/// Creates one disposable box; Rust and the actual SDK read each other's writes.
+/// The box is permanently deleted and deletion completion is observed on failure too.
+#[tokio::test]
+#[ignore = "requires BOX_API_KEY, BOX_TEST_MUTATIONS=1 and BOX_SDK_PATH; creates and deletes a disposable box"]
+async fn live_sdk_file_round_trip() {
+    use box_client::{
+        read_text, wait_for_deletion, wait_until_ready, write_text, CreateBoxRequest, Error,
+    };
+    assert_eq!(std::env::var("BOX_TEST_MUTATIONS").as_deref(), Ok("1"));
+    let sdk_path = std::env::var("BOX_SDK_PATH").expect("BOX_SDK_PATH required");
+    let api = client();
+    assert!(
+        api.limits().await.expect("limits").can_start,
+        "account cannot start a box"
+    );
+    let created = api
+        .create(CreateBoxRequest {
+            no_env: Some(true),
+            ..CreateBoxRequest::ttl(300)
+        })
+        .await
+        .expect("create fixture box");
+    let box_id = &created.box_.id;
+    let result = async {
+        wait_until_ready(&api, box_id).await?;
+        let path = "/tmp/rust-sdk-file-contract.txt";
+        write_text(&api, box_id, path, "written-by-rust").await?;
+        let output = std::process::Command::new("node")
+            .arg("tests/live_sdk_files.cjs")
+            .env("BOX_SDK_PATH", sdk_path)
+            .env("BOX_ID", box_id)
+            .env("BOX_TEST_PATH", path)
+            .output()
+            .map_err(|_| Error::Config("could not start Node SDK probe".into()))?;
+        if !output.status.success() {
+            return Err(Error::Unexpected("SDK file round trip failed".into()));
+        }
+        let actual = read_text(&api, box_id, path).await?;
+        if actual != "written-by-typescript" {
+            return Err(Error::Unexpected("cross-SDK file contents differ".into()));
+        }
+        Ok::<_, Error>(())
+    }
+    .await;
+    eprintln!("file parity result={result:?}; fixture box={box_id}");
+    let cleanup = api.delete_box(box_id).await.expect("delete disposable box");
+    wait_for_deletion(&api, &cleanup.operation.id, None)
+        .await
+        .expect("verify disposable box deletion completed");
+    result.expect("live Rust/TypeScript file parity");
+    eprintln!(
+        "PASS: Rust PUT → TypeScript read → TypeScript PUT → Rust read; box deletion completed"
+    );
+}

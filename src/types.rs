@@ -13,7 +13,7 @@ fn is_none_ttl(v: &Option<TtlSeconds>) -> bool {
 
 // --- Account ---
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MeResponse {
     pub ok: bool,
@@ -22,24 +22,19 @@ pub struct MeResponse {
     pub user: BoxUser,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BoxUser {
     pub id: Option<String>,
     pub login: Option<String>,
     pub email: Option<String>,
     pub name: Option<String>,
+    pub zero_data_retention: Option<bool>,
+    pub zero_data_retention_enabled_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LimitsResponse {
-    pub ok: bool,
-    #[serde(rename = "type")]
-    pub type_: Option<String>,
-    #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
-}
+mod limits;
+pub use limits::*;
 
 // --- Box model ---
 
@@ -89,7 +84,7 @@ impl BoxState {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Box {
     pub id: String,
@@ -111,6 +106,9 @@ pub struct Box {
     pub desktop_url: Option<String>,
     #[serde(default)]
     pub snapshot_available: bool,
+    pub snapshot_completed_at: Option<String>,
+    pub last_snapshot_attempt_at: Option<String>,
+    pub last_snapshot_status: Option<String>,
     pub subdomain: Option<String>,
     pub environment: Option<String>,
     pub environment_version: Option<u32>,
@@ -133,7 +131,7 @@ impl fmt::Debug for Box {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PageInfo {
     pub next_cursor: Option<String>,
@@ -141,7 +139,7 @@ pub struct PageInfo {
     pub limit: u32,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BoxListResponse {
     pub ok: bool,
@@ -151,7 +149,7 @@ pub struct BoxListResponse {
     pub page_info: Option<PageInfo>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BoxInfoResponse {
     pub ok: bool,
@@ -161,7 +159,7 @@ pub struct BoxInfoResponse {
     pub box_: Box,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateBoxResponse {
     pub ok: bool,
@@ -173,7 +171,7 @@ pub struct CreateBoxResponse {
     pub box_: Box,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BoxActionResponse {
     pub ok: bool,
@@ -187,14 +185,18 @@ pub struct BoxActionResponse {
 
 // --- Requests ---
 
-#[derive(Clone, Default, Serialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateBoxRequest {
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub type_: Option<String>,
     /// `None` = omit (server default). `Some(None)` = JSON null (no auto-stop).
     /// `Some(Some(n))` = n seconds.
-    #[serde(skip_serializing_if = "is_none_ttl")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_nullable",
+        skip_serializing_if = "is_none_ttl"
+    )]
     pub ttl_seconds: Option<TtlSeconds>,
     /// Often holds secrets — redacted in `Debug`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -207,7 +209,8 @@ pub struct CreateBoxRequest {
     pub setup_script: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub org: Option<String>,
-
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
 }
@@ -246,25 +249,29 @@ impl CreateBoxRequest {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateBoxRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    #[serde(skip_serializing_if = "is_none_ttl")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_nullable",
+        skip_serializing_if = "is_none_ttl"
+    )]
     pub ttl_seconds: Option<TtlSeconds>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subdomain: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StopRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub force: Option<bool>,
 }
 
-#[derive(Clone, Default, Serialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResumeRequest {
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
@@ -276,7 +283,11 @@ pub struct ResumeRequest {
     pub environment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub no_env: Option<bool>,
-    #[serde(skip_serializing_if = "is_none_ttl")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_nullable",
+        skip_serializing_if = "is_none_ttl"
+    )]
     pub ttl_seconds: Option<TtlSeconds>,
 }
 
@@ -292,7 +303,7 @@ impl fmt::Debug for ResumeRequest {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BoxesQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -305,7 +316,7 @@ pub struct BoxesQuery {
     pub state: Option<String>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandRequest {
     pub command: String,
@@ -349,7 +360,7 @@ impl CommandRequest {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandResponse {
     pub ok: bool,
@@ -388,7 +399,7 @@ impl fmt::Debug for CommandResponse {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileReadQuery {
     pub path: String,
@@ -396,7 +407,7 @@ pub struct FileReadQuery {
     pub encoding: Option<String>,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileReadResponse {
     pub ok: bool,
@@ -405,6 +416,8 @@ pub struct FileReadResponse {
     pub path: Option<String>,
     pub content: Option<String>,
     pub encoding: Option<String>,
+    pub success: Option<bool>,
+    pub size: Option<u64>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
@@ -422,7 +435,7 @@ impl fmt::Debug for FileReadResponse {
     }
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileWriteRequest {
     pub path: String,
@@ -441,24 +454,31 @@ impl fmt::Debug for FileWriteRequest {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileWriteResponse {
     pub ok: bool,
     #[serde(rename = "type")]
     pub type_: Option<String>,
     pub success: Option<bool>,
+    pub path: Option<String>,
+    pub encoding: Option<String>,
+    pub size: Option<u64>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostPortRequest {
     pub port: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostPortResponse {
     pub ok: bool,
@@ -486,13 +506,14 @@ impl std::fmt::Debug for HostPortResponse {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SshKeyRequest {
+    #[serde(rename = "key")]
     pub public_key: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SshKeyResponse {
     pub ok: bool,
@@ -503,7 +524,7 @@ pub struct SshKeyResponse {
     pub ssh_user: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiErrorBody {
     pub ok: bool,
@@ -514,9 +535,10 @@ pub struct ApiErrorBody {
     pub message: Option<String>,
     pub request_id: Option<String>,
     pub error: Option<ApiErrorDetail>,
+    pub details: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiErrorDetail {
     pub code: Option<String>,
@@ -529,7 +551,20 @@ fn redact_env_map(env: &HashMap<String, String>) -> HashMap<String, &'static str
     env.keys().map(|k| (k.clone(), "<redacted>")).collect()
 }
 
+// Requests with optional nullable fields distinguish omission, null and value.
+fn deserialize_optional_nullable<'de, D, T>(
+    deserializer: D,
+) -> std::result::Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
 // Runtime models are grouped by API domain and re-exported at the crate root.
+mod options;
+pub use options::*;
 mod commands;
 mod environments;
 mod prompts;
@@ -539,8 +574,18 @@ pub use environments::*;
 pub use prompts::*;
 pub use snapshots::*;
 
-#[derive(Debug, Clone, Serialize)]
-pub(crate) struct EmptyRequest {}
+mod administration;
+pub use administration::*;
+mod webhooks;
+pub use webhooks::*;
+mod repositories;
+pub use repositories::*;
+mod environment_items;
+pub use environment_items::*;
+mod named_snapshots;
+pub use named_snapshots::*;
+mod lifecycle;
+pub use lifecycle::*;
 
 #[cfg(test)]
 mod tests {
