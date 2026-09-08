@@ -1,4 +1,4 @@
-//! Models for the published SDK 0.0.34 environment items operations.
+//! Request and response types for environment items.
 use super::*;
 
 #[derive(Clone, Deserialize, Serialize)]

@@ -1,4 +1,4 @@
-//! Models for the published SDK 0.0.34 repositories operations.
+//! Request and response types for repositories.
 use super::*;
 
 #[derive(Clone, Deserialize, Serialize)]

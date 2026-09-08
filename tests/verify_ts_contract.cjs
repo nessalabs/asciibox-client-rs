@@ -1,5 +1,5 @@
 // Run with the unpacked @asciidev/box-sdk@0.0.34 directory as argv[2].
-// Uses the published SDK without a TypeScript compiler or network access.
+// Runs the published request builders and converters without network access.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');

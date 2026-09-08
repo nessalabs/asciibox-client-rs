@@ -1,10 +1,4 @@
-//! Parity tests against `@asciidev/box-sdk` behavior for the shared v0.1 surface.
-//!
-//! The published TypeScript package ships **no test suite** (OpenAPI Generator +
-//! hand-written `box-helpers.ts`). These tests encode that helper/API contract
-//! so Rust stays 1:1 with what TS callers actually rely on.
-//!
-//! See `docs/parity.md` for the method matrix.
+//! Request, response, and convenience-helper contracts.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -47,10 +41,10 @@ async fn api(server: &MockServer) -> BoxApi {
     .unwrap()
 }
 
-// --- Account (TS: me / limits) ---
+// Account operations.
 
 #[tokio::test]
-async fn ts_me() {
+async fn me() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/me"))
@@ -68,7 +62,7 @@ async fn ts_me() {
 }
 
 #[tokio::test]
-async fn ts_limits() {
+async fn limits() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/limits"))
@@ -85,10 +79,10 @@ async fn ts_limits() {
     assert!(limits.can_start);
 }
 
-// --- Lifecycle (TS: boxes / create / get / update / stop / resume) ---
+// Box lifecycle.
 
 #[tokio::test]
-async fn ts_boxes_list_and_query() {
+async fn boxes_list_and_query() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/boxes"))
@@ -113,7 +107,7 @@ async fn ts_boxes_list_and_query() {
 }
 
 #[tokio::test]
-async fn ts_create_with_idempotency_key() {
+async fn create_with_idempotency_key() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/boxes"))
@@ -228,7 +222,7 @@ async fn extended_snapshot_and_environment_routes() {
 }
 
 #[tokio::test]
-async fn ts_get_update_stop_resume() {
+async fn get_update_stop_resume() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/boxes/bx_23456789"))
@@ -300,10 +294,10 @@ async fn ts_get_update_stop_resume() {
     );
 }
 
-// --- Helpers (TS box-helpers.ts) ---
+// Convenience helpers.
 
 #[tokio::test]
-async fn ts_wait_until_ready_success_states() {
+async fn wait_until_ready_success_states() {
     for state in ["ready", "idle", "running"] {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -321,7 +315,7 @@ async fn ts_wait_until_ready_success_states() {
 }
 
 #[tokio::test]
-async fn ts_wait_until_ready_terminal_states() {
+async fn wait_until_ready_terminal_states() {
     for state in ["archived", "archiving", "error"] {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -342,7 +336,7 @@ async fn ts_wait_until_ready_terminal_states() {
 }
 
 #[tokio::test]
-async fn ts_wait_until_ready_polls_then_succeeds() {
+async fn wait_until_ready_polls_then_succeeds() {
     let server = MockServer::start().await;
     let hits = Arc::new(AtomicUsize::new(0));
     let hits2 = hits.clone();
@@ -373,7 +367,7 @@ async fn ts_wait_until_ready_polls_then_succeeds() {
 }
 
 #[tokio::test]
-async fn ts_exec_command_default_timeout_30() {
+async fn exec_command_default_timeout_30() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/boxes/bx_23456789/commands"))
@@ -401,7 +395,7 @@ async fn ts_exec_command_default_timeout_30() {
 }
 
 #[tokio::test]
-async fn ts_exec_command_with_cwd_and_timeout() {
+async fn exec_command_with_cwd_and_timeout() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/boxes/bx_23456789/commands"))
@@ -430,7 +424,7 @@ async fn ts_exec_command_with_cwd_and_timeout() {
 }
 
 #[tokio::test]
-async fn ts_read_text_write_text_utf8() {
+async fn read_text_write_text_utf8() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/boxes/bx_23456789/files"))
@@ -468,7 +462,7 @@ async fn ts_read_text_write_text_utf8() {
 }
 
 #[tokio::test]
-async fn ts_host_port_and_ssh_key() {
+async fn host_port_and_ssh_key() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/boxes/bx_23456789/host"))
@@ -500,8 +494,8 @@ async fn ts_host_port_and_ssh_key() {
 }
 
 #[tokio::test]
-async fn ts_required_box_id_rejected_like_required_error() {
-    // TS throws RequiredError when boxId is null/undefined; we validate format.
+async fn invalid_box_id_is_rejected() {
+    // Invalid identifiers are rejected before sending a request.
     let client = BoxApi::new(Configuration::new("box_test_key").unwrap()).unwrap();
     let err = client
         .command("bad", CommandRequest::new("true"))
@@ -511,7 +505,7 @@ async fn ts_required_box_id_rejected_like_required_error() {
 }
 
 #[tokio::test]
-async fn ts_api_error_envelope() {
+async fn api_error_envelope() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/boxes/bx_23456789"))
@@ -565,7 +559,7 @@ async fn rejects_detached_command() {
 }
 
 #[tokio::test]
-async fn create_request_ttl_serializes_like_ts() {
+async fn create_request_ttl_preserves_null_and_omission() {
     assert_eq!(
         serde_json::to_value(CreateBoxRequest::ttl(1800)).unwrap(),
         json!({ "ttlSeconds": 1800 })
@@ -577,7 +571,7 @@ async fn create_request_ttl_serializes_like_ts() {
 }
 
 #[tokio::test]
-async fn write_file_raw_matches_ts_shape() {
+async fn write_file_uses_put_and_serializes_body() {
     let server = MockServer::start().await;
     Mock::given(method("PUT"))
         .and(path("/boxes/bx_23456789/files"))

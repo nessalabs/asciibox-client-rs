@@ -14,17 +14,16 @@ track `Cargo.lock`, so do not add `--locked` before generating one. CI also chec
 Rust 1.89 and reruns the Node fixture verification against the pinned SDK.
 
 Unit tests cover configuration, validation, error formatting and core models.
-`tests/parity_ts.rs` preserves the original API/helper contracts.
-`tests/runtime_regressions.rs` adds targeted tests for the review findings, using
+`tests/api_contracts.rs` covers endpoint and convenience-helper behavior.
+`tests/runtime_regressions.rs` adds targeted tests for runtime edge cases, using
 non-sensitive fixtures under `tests/fixtures/`. `tests/sdk_operations.rs` checks all
-59 SDK operations with full/minimal requests and responses, API failures and non-retried
+59 endpoint operations with full/minimal requests and responses, API failures and non-retried
 mutations. `tests/streams.rs` covers cursor advancement, page draining, cancellation
 and deadlines. `tests/error_contracts.rs` checks non-JSON failures, decoding
 redaction, chunked response caps and nullable/fractional wire values. No credential
 is needed.
 
-To independently validate those fixtures and the corrected request shapes against
-the published SDK, unpack `@asciidev/box-sdk@0.0.34` and run:
+To verify fixture provenance, unpack the reference package `@asciidev/box-sdk@0.0.34` and run:
 
 ```bash
 node scripts/sdk_fixtures.cjs /path/to/unpacked/package
@@ -32,11 +31,10 @@ node tests/verify_ts_contract.cjs /path/to/unpacked/package
 ```
 
 Regenerate the checked-in operation fixtures by adding `--write` to the first
-command, then review the diff. The pinned SDK package ships no upstream tests;
-these are our reproducible checks against its actual implementation.
+command, then review the diff.
 
-The Node scripts use the package's actual converters and request builders. It
-checks nested wire values and request options without making API requests. The
+The Node scripts use the package's actual converters and request builders. They
+check nested wire values and request options without making API requests. The
 package path is an argument; no machine-specific path or dependency is checked in.
 
 ## Live checks
@@ -70,9 +68,7 @@ completion guarantee. A documented `blocked` state may outlast that budget and
 fail the live test without proving either an SDK mismatch or a service defect.
 Use the returned operation ID to check again; only `completed` confirms cleanup.
 See [Box data-retention and deletion](https://docs.ascii.dev/box/data-retention).
-No live test deletes a
-pre-existing snapshot. For deletion lifecycle checks, a returned
-operation must be observed as `completed`; box invisibility alone is insufficient.
+No live test deletes a pre-existing snapshot.
 
 ## Remaining verification scope
 
@@ -81,7 +77,7 @@ update/delete lifecycle and a nonempty snapshot tree/download manifest. These ar
 smoke checks, not load benchmarks or a complete state-space test. Provider-backed
 prompt completion, full desktop availability, large output recovery and actual
 multi-page events need suitable live fixtures. Offline tests cover those modeled
-contracts and the shared polling logic where noted in the parity matrix.
+contracts and the shared polling logic described in the SDK guide.
 
 For load testing, use a dedicated organization and bounded disposable resources;
 measure command-log transfer, response size, latency, cancellation and rate-limit

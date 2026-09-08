@@ -1,4 +1,4 @@
-//! Regression coverage for the Astra review, with fixtures checked against SDK 0.0.34.
+//! Regression coverage for runtime behavior, response models, and transport limits.
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,

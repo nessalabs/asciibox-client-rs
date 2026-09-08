@@ -23,6 +23,8 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: test
         run: cargo test --all-targets
+      - name: documentation examples
+        run: cargo test --doc
 
   minimum-rust:
     runs-on: ubuntu-latest

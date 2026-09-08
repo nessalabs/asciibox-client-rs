@@ -2,7 +2,7 @@
 name = "box_client"
 version = "0.1.0"
 edition = "2021"
-description = "Rust client for the Ascii Box Public API v1 (TypeScript BoxApi-shaped)"
+description = "Async Rust SDK for the Ascii Box API"
 license = "MIT"
 repository = "https://github.com/nessalabs/asciibox-client-rs"
 homepage = "https://github.com/nessalabs/asciibox-client-rs"

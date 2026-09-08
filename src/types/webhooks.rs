@@ -1,4 +1,4 @@
-//! Models for the published SDK 0.0.34 webhooks operations.
+//! Request and response types for webhooks.
 use super::*;
 
 #[derive(Clone, Deserialize, Serialize)]

@@ -145,8 +145,7 @@ impl EventStreamState {
             return Err(Error::Config("event stream limit must be positive".into()));
         }
         self.budget = Some(PollBudget::new(self.options.wait.timeout)?);
-        // Fetch the latest event, rather than the tail of only the first 200
-        // ascending events. This excludes all existing history at any size.
+        // Start after the latest event so existing history is excluded at any size.
         if !self.options.include_existing || self.request.is_some() {
             let query = EventsQuery {
                 limit: Some(1),

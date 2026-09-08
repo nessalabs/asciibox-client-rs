@@ -1,6 +1,6 @@
 use super::*;
 
-/// Providers accepted by the TypeScript SDK prompt contract.
+/// Agent providers accepted by the prompt endpoint.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum PromptProvider {

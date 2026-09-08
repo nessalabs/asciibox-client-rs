@@ -7,7 +7,7 @@ use crate::client::BoxApi;
 use crate::error::{Error, Result};
 use crate::types::*;
 
-/// Polling options. Zero timeout means unlimited, as in the TypeScript helpers.
+/// Polling options. A zero timeout means unlimited.
 /// Nonzero timeouts bound the entire wait, including HTTP retries and sleeps.
 /// Dropping a wait future cancels local polling, not server-side work.
 #[derive(Debug, Clone)]
@@ -142,7 +142,7 @@ async fn wait_for_box(
     .await
 }
 
-/// Return the terminal run for either `finished` or `failed`, matching TypeScript.
+/// Wait until a prompt finishes or fails, returning its terminal run.
 pub async fn wait_for_prompt(
     api: &BoxApi,
     box_id: &str,
@@ -164,7 +164,7 @@ pub async fn wait_for_prompt(
     .await
 }
 
-/// Match TypeScript's `vnc` and `publicAccess` options, plus a bounded wait budget.
+/// Desktop connection options and the budget for waiting until it is available.
 #[derive(Debug, Clone)]
 pub struct DesktopWaitOptions {
     pub wait: WaitOptions,

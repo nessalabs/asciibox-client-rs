@@ -336,7 +336,7 @@ async fn check(operation: &str) {
         }
     }
 }
-// Compare canonical wire fields. SDK repos ToJSON leaks a duplicate `_private` alias.
+// Compare canonical wire fields, excluding internal model aliases.
 // Rust Option emits null; JSON has one numeric type while serde distinguishes integers/floats.
 fn without_nulls(value: Value) -> Value {
     match value {
