@@ -73,12 +73,12 @@ impl BoxState {
     }
 
     /// States where command / SSH / agent work can proceed.
-    /// Matches TS `waitUntilReady` success set: `ready` | `idle` | `running`.
+    /// Whether the Box is ready to accept work.
     pub fn is_operable(&self) -> bool {
         matches!(self, Self::Ready | Self::Idle | Self::Running)
     }
 
-    /// TS `waitUntilReady` failure set: `archived` | `archiving` | `error`.
+    /// Whether a readiness wait must stop because the Box is unavailable.
     pub fn is_terminal_failure(&self) -> bool {
         matches!(self, Self::Archived | Self::Archiving | Self::Error)
     }

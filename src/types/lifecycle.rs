@@ -1,4 +1,4 @@
-//! Models for the published SDK 0.0.34 lifecycle operations.
+//! Request and response types for lifecycle.
 use super::*;
 
 #[derive(Clone, Deserialize, Serialize, Default)]

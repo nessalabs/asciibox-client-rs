@@ -1,4 +1,4 @@
-//! Models for the published SDK 0.0.34 administration operations.
+//! Request and response types for administration.
 use super::*;
 
 #[derive(Clone, Deserialize, Serialize)]

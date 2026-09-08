@@ -6,7 +6,7 @@ use url::Url;
 
 use crate::error::{Error, Result};
 
-/// Client configuration — mirrors TS `Configuration`.
+/// Authentication, organization scope, HTTP timeouts, and response limits.
 ///
 /// Timeouts follow common Rust API-client practice (e.g. octocrab / reqwest):
 /// a short **connect** budget and a separate **request** budget. Long-running

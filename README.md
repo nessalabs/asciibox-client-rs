@@ -1,91 +1,94 @@
-# asciibox-client-rs
+# Ascii Box Rust SDK
 
-Rust client for the [Ascii Box Public API v1](https://docs.ascii.dev/box/api/v1).
+An asynchronous Rust client for the [Ascii Box API](https://docs.ascii.dev/box/api/v1).
+Create cloud sandboxes, execute commands, read and write files, run agent prompts,
+stream events, and manage snapshots, environments, and account settings.
 
-Shaped like TypeScript [`@asciidev/box-sdk`](https://www.npmjs.com/package/@asciidev/box-sdk) `BoxApi`, including lifecycle, command exec (synchronous and detached), prompts/events, files, desktop/host/SSH, snapshots, named snapshots, environments, account administration, polling and cancellable event streams. Covers all 59 operations in SDK 0.0.34.
-
-Crate name on Cargo: `box_client`.
+The crate is `box_client` and requires Rust 1.89 or newer.
 
 ## Install
 
-Requires Rust 1.89 or newer.
-
 ```toml
+[dependencies]
 box_client = { git = "https://github.com/nessalabs/asciibox-client-rs" }
-# or path = "…"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
-## Configure
+## Quick start
+
+Set `BOX_API_KEY` to a key from the Box dashboard or CLI. `BOX_ORG` and
+`BOX_BASE_URL` are optional.
+
+```rust
+use box_client::{BoxApi, Configuration, Result};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let api = BoxApi::new(Configuration::from_env()?)?;
+    let response = api.boxes(None).await?;
+
+    for item in response.boxes {
+        println!("{}: {}", item.id, item.state.as_str());
+    }
+    Ok(())
+}
+```
+
+## Documentation
+
+- [SDK guide](docs/guide.md): complete Rust examples for commands, files, prompts,
+  streams, snapshots, environments, cleanup, and error handling.
+- [API reference](docs/api.md): all 59 endpoint operations and convenience helpers.
+- [Migration guide](docs/migration.md): changes for existing callers.
+- [Testing](docs/testing.md): local checks, fixture verification, and live tests.
+
+Build searchable API documentation with method signatures and request/response
+types:
 
 ```bash
-export BOX_API_KEY=box_…   # from `box api-key create` or the dashboard
-# optional: BOX_BASE_URL, BOX_ORG
+cargo doc --no-deps --open
 ```
 
-```rust,no_run
-use box_client::{BoxApi, Configuration};
+## Main APIs
 
-# async fn demo() -> box_client::Result<()> {
-let api = BoxApi::new(Configuration::from_env()?)?;
-let list = api.boxes(None).await?;
-println!("{} boxes", list.boxes.len());
-# Ok(())
-# }
-```
-
-## Client surface
-
-| Method | Purpose |
+| Area | Entry points |
 | --- | --- |
-| `me` / `limits` | Account |
-| `boxes` / `create` / `get` / `update` / `stop` / `resume` | Lifecycle |
-| `command` / `exec` / `exec_command` | Run shell in box |
-| `read_file` / `write_file` / `read_text` / `write_text` | File IO |
-| `host_port` / `ssh_key` | Exposure / SSH |
-| `wait_until_ready` | Poll until operable |
-| `prompt` / `prompt_run_status` / `events` | Agent prompts and event pages |
-| `desktop` / `wait_for_desktop` | Desktop provisioning |
-| `command_raw` / `command_status` | Detached command lifecycle |
-| `list_snapshots` / `list_box_snapshots` / `latest_box_snapshot` | Snapshot discovery |
-| `snapshot_tree` / `snapshot_download` / `snapshot_file` / `delete_snapshot` | Snapshot access and deletion |
-| `environments` / `create_environment` / `update_environment` / `delete_environment` | Environment lifecycle |
-| `stream_events` / `stream_prompt` | Lazy, cancellable event streams |
-| Named snapshot methods | Save, get, list and delete named snapshots |
-| Granular environment methods | Variables, secret files, repositories and upgrades |
-| `api_keys` / `api_key_usage` / retention / webhooks / secrets / repositories | Account administration |
-| `delete_box` / `interrupt` | Destructive cleanup and interruption |
-| `wait_until_idle` / `wait_for_prompt` | Bounded polling with TypeScript defaults |
-| `get_deletion_operation` / `wait_for_deletion` | Observe background deletion completion |
+| Boxes | `boxes`, `create`, `get`, `update`, `stop`, `resume`, `fork`, `delete_box` |
+| Commands | `exec`, `command`, `command_raw`, `command_status`, `interrupt` |
+| Files | `read_file`, `write_file`, `read_text`, `write_text`, `artifact` |
+| Prompts and events | `prompt`, `prompt_run_status`, `events`, `stream_prompt`, `stream_events` |
+| Desktop and access | `desktop`, `host_port`, `ssh_key` |
+| Snapshots | `list_snapshots`, `list_box_snapshots`, `snapshot_tree`, `snapshot_file`, `snapshot_download` |
+| Named snapshots | `save_named_snapshot`, `get_named_snapshot`, `list_named_snapshots`, `delete_named_snapshot` |
+| Environments | Environment lifecycle, variables, secret files, repositories, and upgrades |
+| Account | Limits, API-key usage, webhooks, repositories, secrets, and retention policy |
+| Waiting | `wait_until_ready`, `wait_until_idle`, `wait_for_prompt`, `wait_for_desktop`, `wait_for_deletion` |
 
-Destructive delete methods send the API's matching confirmation header and are never retried. They return an accepted operation; use `wait_for_deletion` to verify completion. A missing box is not proof that backend deletion finished.
+## Runtime behavior
 
-See [the complete endpoint/helper matrix, language differences and migration notes](docs/parity.md).
+The client shares a connection pool across clones. Streams are lazy and support
+`CancellationToken`. Waits bound requests, retries, and sleeps; zero timeout means
+unlimited observation.
 
-## Defaults (timeouts)
+GET requests retry transient failures up to three attempts and honor `Retry-After`.
+Mutations are never automatically retried. Responses have a configurable 64 MiB
+buffer limit. Error formatting and content-bearing model `Debug` output redact
+sensitive data.
 
-| Knob | Default | Notes |
-| --- | --- | --- |
-| `connect_timeout` | 10s | TCP connect |
-| `request_timeout` | 60s | Most API calls |
-| `command` HTTP timeout | `timeout_seconds` (default 30) **+ 15s slack**, at least `request_timeout` | Avoids cutting off long in-box commands |
-| GET attempts | up to 3 total | Connect/timeout/429/502–504/`box_starting`/`box_securing` only |
+Permanent deletion returns an accepted operation. Only `completed` confirms
+cleanup; a hidden Box or a `blocked` operation does not. The deletion wait timeout
+is a caller budget, not a service completion guarantee.
 
-GET backoff includes jitter and respects `Retry-After`; exhausted transport failures propagate through waits. Nonzero wait budgets include HTTP requests/retries and sleeps. Zero means unlimited. Responses are buffered up to a configurable 64 MiB limit (`with_max_response_bytes`).
-
-`Configuration` redacts the access token in `Debug` (length only). `CreateBoxRequest` / `ResumeRequest` redact `env` and setup scripts; `CommandRequest` / `CommandResponse` / file IO types hide command text and stream bodies in `Debug`. Hosted port URLs are redacted in `HostPortResponse`. `Error::Api` / `Unexpected` `Display`/`Debug` omit server message/details/bodies (use `api_message()` / `api_details()` / `unexpected_body()` when you need them). Runtime environment/event/prompt payloads, repository setup scripts, and snapshot signed URLs are redacted in `Debug`, including nested wrappers. Commands are **never** auto-retried. Pass `Idempotency-Key` via `create_with_idempotency`. Non-localhost `http://` base URLs are rejected.
-
-## Tests
+## Examples and checks
 
 ```bash
+cargo run --example list_boxes
+BOX_ID=bx_… cargo run --example exec_smoke
+BOX_ID=bx_… BOX_PROMPT='Summarize the project' cargo run --example stream_prompt
+
 cargo test
 cargo clippy --all-targets -- -D warnings
-
-# live smoke (ignored by default)
-BOX_API_KEY=… cargo test --test live live_me_and_boxes -- --ignored
-BOX_API_KEY=… BOX_ID=bx_… cargo test --test live live_get_and_exec_existing_box -- --ignored
 ```
-
-Contract parity with the TS SDK helpers: [docs/parity.md](docs/parity.md). Testing layers: [docs/testing.md](docs/testing.md).
 
 ## License
 

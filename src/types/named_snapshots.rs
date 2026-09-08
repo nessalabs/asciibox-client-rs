@@ -1,4 +1,4 @@
-//! Models for the published SDK 0.0.34 named snapshots operations.
+//! Request and response types for named snapshots.
 use super::*;
 
 #[derive(Clone, Deserialize, Serialize)]

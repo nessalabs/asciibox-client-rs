@@ -1,8 +1,10 @@
-//! Remaining SDK operations share the parent client's transport and error policy.
+//! Administration and resource operations using the shared HTTP transport.
 use super::*;
 
 impl BoxApi {
-    /// TypeScript `addEnvironmentRepo`: `POST /environments/{environmentId}/repos`.
+    /// Add a repository to an environment.
+    ///
+    /// `POST /environments/{environmentId}/repos`.
     pub async fn add_environment_repo(
         &self,
         environment_id: &str,
@@ -15,7 +17,9 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `apiKeyUsage`: `GET /api-keys/{apiKeyId}/usage`.
+    /// Read usage and resource totals for an API key.
+    ///
+    /// `GET /api-keys/{apiKeyId}/usage`.
     pub async fn api_key_usage(&self, api_key_id: &str) -> Result<ApiKeyUsageResponse> {
         let api_path = format!("/api-keys/{}/usage", segment(api_key_id)?);
         let url = format!("{}{api_path}", self.base);
@@ -23,7 +27,9 @@ impl BoxApi {
         self.execute(req, true).await
     }
 
-    /// TypeScript `apiKeys`: `GET /api-keys`.
+    /// List API keys and their usage summaries.
+    ///
+    /// `GET /api-keys`.
     pub async fn api_keys(&self) -> Result<ApiKeysResponse> {
         let api_path = "/api-keys";
         let url = format!("{}{api_path}", self.base);
@@ -31,7 +37,9 @@ impl BoxApi {
         self.execute(req, true).await
     }
 
-    /// TypeScript `artifact`: `GET /boxes/{boxId}/artifacts`.
+    /// Download an artifact from a Box as bytes.
+    ///
+    /// `GET /boxes/{boxId}/artifacts`.
     pub async fn artifact(&self, box_id: &str, path: &str) -> Result<Vec<u8>> {
         let api_path = format!("/boxes/{}/artifacts", validate_box_id(box_id)?);
         let url = format!("{}{api_path}", self.base);
@@ -41,7 +49,9 @@ impl BoxApi {
         self.execute_bytes(req, true).await
     }
 
-    /// TypeScript `createWebhook`: `POST /webhooks`.
+    /// Create a webhook and return its signing secret.
+    ///
+    /// `POST /webhooks`.
     pub async fn create_webhook(
         &self,
         request: WebhookCreateRequest,
@@ -53,7 +63,9 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `deleteEnvironmentRepo`: `DELETE /environments/{environmentId}/repos/{repositoryId}`.
+    /// Remove a repository from an environment.
+    ///
+    /// `DELETE /environments/{environmentId}/repos/{repositoryId}`.
     pub async fn delete_environment_repo(
         &self,
         environment_id: &str,
@@ -69,7 +81,9 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `deleteEnvironmentSecretFile`: `DELETE /environments/{environmentId}/secret-files`.
+    /// Remove a secret file from an environment.
+    ///
+    /// `DELETE /environments/{environmentId}/secret-files`.
     pub async fn delete_environment_secret_file(
         &self,
         environment_id: &str,
@@ -82,7 +96,9 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `deleteEnvironmentVar`: `DELETE /environments/{environmentId}/vars/{key}`.
+    /// Remove an environment variable.
+    ///
+    /// `DELETE /environments/{environmentId}/vars/{key}`.
     pub async fn delete_environment_var(
         &self,
         environment_id: &str,
@@ -98,7 +114,9 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `deleteNamedSnapshot`: `DELETE /named-snapshots/{name}`.
+    /// Delete a named snapshot.
+    ///
+    /// `DELETE /named-snapshots/{name}`.
     pub async fn delete_named_snapshot(&self, name: &str) -> Result<NamedSnapshotDeletedResponse> {
         let api_path = format!("/named-snapshots/{}", segment(name)?);
         let url = format!("{}{api_path}", self.base);
@@ -106,7 +124,9 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `deleteWebhook`: `DELETE /webhooks/{webhookId}`.
+    /// Delete a webhook.
+    ///
+    /// `DELETE /webhooks/{webhookId}`.
     pub async fn delete_webhook(&self, webhook_id: &str) -> Result<WebhookDeleteResponse> {
         let api_path = format!("/webhooks/{}", segment(webhook_id)?);
         let url = format!("{}{api_path}", self.base);
@@ -114,7 +134,9 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `fork`: `POST /boxes/{boxId}/fork`.
+    /// Create an independent Box from an existing Box.
+    ///
+    /// `POST /boxes/{boxId}/fork`.
     pub async fn fork(
         &self,
         box_id: &str,
@@ -132,7 +154,9 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `getDataRetention`: `GET /account/data-retention`.
+    /// Read the account data-retention policy.
+    ///
+    /// `GET /account/data-retention`.
     pub async fn get_data_retention(&self) -> Result<DataRetentionPolicyResponse> {
         let api_path = "/account/data-retention";
         let url = format!("{}{api_path}", self.base);
@@ -140,7 +164,9 @@ impl BoxApi {
         self.execute(req, true).await
     }
 
-    /// TypeScript `getNamedSnapshot`: `GET /named-snapshots/{name}`.
+    /// Read a named snapshot.
+    ///
+    /// `GET /named-snapshots/{name}`.
     pub async fn get_named_snapshot(&self, name: &str) -> Result<NamedSnapshotInfoResponse> {
         let api_path = format!("/named-snapshots/{}", segment(name)?);
         let url = format!("{}{api_path}", self.base);
@@ -148,7 +174,9 @@ impl BoxApi {
         self.execute(req, true).await
     }
 
-    /// TypeScript `getWebhook`: `GET /webhooks/{webhookId}`.
+    /// Read webhook settings.
+    ///
+    /// `GET /webhooks/{webhookId}`.
     pub async fn get_webhook(&self, webhook_id: &str) -> Result<WebhookResponse> {
         let api_path = format!("/webhooks/{}", segment(webhook_id)?);
         let url = format!("{}{api_path}", self.base);
@@ -156,7 +184,9 @@ impl BoxApi {
         self.execute(req, true).await
     }
 
-    /// TypeScript `listNamedSnapshots`: `GET /named-snapshots`.
+    /// List named snapshots.
+    ///
+    /// `GET /named-snapshots`.
     pub async fn list_named_snapshots(&self) -> Result<NamedSnapshotListResponse> {
         let api_path = "/named-snapshots";
         let url = format!("{}{api_path}", self.base);
@@ -164,7 +194,9 @@ impl BoxApi {
         self.execute(req, true).await
     }
 
-    /// TypeScript `listWebhooks`: `GET /webhooks`.
+    /// List webhooks.
+    ///
+    /// `GET /webhooks`.
     pub async fn list_webhooks(&self) -> Result<WebhookListResponse> {
         let api_path = "/webhooks";
         let url = format!("{}{api_path}", self.base);
@@ -172,7 +204,9 @@ impl BoxApi {
         self.execute(req, true).await
     }
 
-    /// TypeScript `repos`: `GET /repos`.
+    /// List available repositories with optional filters and pagination.
+    ///
+    /// `GET /repos`.
     pub async fn repos(&self, query: Option<&ReposQuery>) -> Result<ReposResponse> {
         let api_path = "/repos";
         let url = format!("{}{api_path}", self.base);
@@ -184,7 +218,9 @@ impl BoxApi {
         self.execute(req, true).await
     }
 
-    /// TypeScript `rotateWebhookSigningSecret`: `POST /webhooks/{webhookId}/rotate`.
+    /// Rotate and return a webhook signing secret.
+    ///
+    /// `POST /webhooks/{webhookId}/rotate`.
     pub async fn rotate_webhook_signing_secret(
         &self,
         webhook_id: &str,
@@ -195,7 +231,9 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `saveNamedSnapshot`: `POST /named-snapshots`.
+    /// Save a named snapshot from a Box.
+    ///
+    /// `POST /named-snapshots`.
     pub async fn save_named_snapshot(
         &self,
         request: NamedSnapshotSaveRequest,
@@ -207,7 +245,9 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `secrets`: `GET /secrets`.
+    /// Read the configured secrets and secret files.
+    ///
+    /// `GET /secrets`.
     pub async fn secrets(&self) -> Result<SecretsResponse> {
         let api_path = "/secrets";
         let url = format!("{}{api_path}", self.base);
@@ -215,7 +255,9 @@ impl BoxApi {
         self.execute(req, true).await
     }
 
-    /// TypeScript `selectRepo`: `POST /repos`.
+    /// Select a repository for new Boxes.
+    ///
+    /// `POST /repos`.
     pub async fn select_repo(
         &self,
         request: RepoSelectionRequest,
@@ -227,7 +269,9 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `setEnvironmentSecretFile`: `PUT /environments/{environmentId}/secret-files`.
+    /// Create or replace an environment secret file.
+    ///
+    /// `PUT /environments/{environmentId}/secret-files`.
     pub async fn set_environment_secret_file(
         &self,
         environment_id: &str,
@@ -240,7 +284,9 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `setEnvironmentVar`: `PUT /environments/{environmentId}/vars/{key}`.
+    /// Create or replace an environment variable.
+    ///
+    /// `PUT /environments/{environmentId}/vars/{key}`.
     pub async fn set_environment_var(
         &self,
         environment_id: &str,
@@ -258,8 +304,11 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `updateDataRetention`: `PATCH /account/data-retention`.
-    /// Enabling retention deletion requires the explicit confirmation from the caller.
+    /// Update the account data-retention policy.
+    ///
+    /// `PATCH /account/data-retention`.
+    /// Requires an interactive session token. Enabling deletion also requires
+    /// the confirmation phrase in the request.
     pub async fn update_data_retention(
         &self,
         request: DataRetentionUpdateRequest,
@@ -271,7 +320,10 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `updateSecrets`: `POST /secrets`.
+    /// Replace the configured secrets and secret files.
+    /// Include every value that should remain in the configuration.
+    ///
+    /// `POST /secrets`.
     pub async fn update_secrets(&self, request: SecretsUpdateRequest) -> Result<SecretsResponse> {
         let api_path = "/secrets";
         let url = format!("{}{api_path}", self.base);
@@ -280,7 +332,9 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `updateWebhook`: `PATCH /webhooks/{webhookId}`.
+    /// Update webhook settings.
+    ///
+    /// `PATCH /webhooks/{webhookId}`.
     pub async fn update_webhook(
         &self,
         webhook_id: &str,
@@ -293,7 +347,9 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// TypeScript `upgradeEnvironment`: `POST /environments/{environmentId}/upgrade`.
+    /// Upgrade an environment to a new version.
+    ///
+    /// `POST /environments/{environmentId}/upgrade`.
     pub async fn upgrade_environment(
         &self,
         environment_id: &str,

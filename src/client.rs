@@ -12,7 +12,7 @@ use crate::error::{Error, Result};
 use crate::types::*;
 use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 
-// encodeURIComponent preserves these URI-safe characters.
+// Characters allowed unescaped inside an API path segment.
 const PATH_SEGMENT: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'-')
     .remove(b'_')
@@ -33,7 +33,7 @@ const GET_MAX_RETRIES: u32 = 3;
 const GET_RETRY_BASE: Duration = Duration::from_millis(200);
 const ERROR_BODY_MAX: usize = 2_048;
 
-/// Ascii Box API client — mirrors TypeScript `BoxApi`.
+/// Asynchronous client for the Ascii Box API.
 ///
 /// Cheap to clone: wraps a pooled `reqwest::Client`.
 #[derive(Clone, Debug)]
@@ -57,20 +57,24 @@ impl BoxApi {
         Ok(Self { http, config, base })
     }
 
+    /// Read the configuration used by this client.
     pub fn config(&self) -> &Configuration {
         &self.config
     }
 
     // --- Account ---
 
+    /// Read the authenticated account profile.
     pub async fn me(&self) -> Result<MeResponse> {
         self.get_json("/me").await
     }
 
+    /// Read account limits and balances using the configured organization.
     pub async fn limits(&self) -> Result<LimitsResponse> {
         self.limits_with(&LimitsOptions::default()).await
     }
 
+    /// Read limits for an explicit organization or team scope.
     pub async fn limits_with(&self, options: &LimitsOptions) -> Result<LimitsResponse> {
         let url = format!("{}/limits", self.base);
         let req = self
@@ -81,6 +85,7 @@ impl BoxApi {
 
     // --- Lifecycle ---
 
+    /// List Boxes with optional state filters and pagination.
     pub async fn boxes(&self, query: Option<&BoxesQuery>) -> Result<BoxListResponse> {
         match query {
             Some(q) => self.get_json_query("/boxes", q).await,
@@ -88,6 +93,7 @@ impl BoxApi {
         }
     }
 
+    /// Create a Box with the supplied settings.
     pub async fn create(&self, request: CreateBoxRequest) -> Result<CreateBoxResponse> {
         self.create_with_idempotency(request, None).await
     }
@@ -108,7 +114,7 @@ impl BoxApi {
         .await
     }
 
-    /// Full TypeScript create options, including per-call organization scope.
+    /// Create a Box with optional body, organization scope, and idempotency key.
     pub async fn create_with_options(
         &self,
         request: Option<CreateBoxRequest>,
@@ -128,16 +134,19 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
+    /// Read the current state and configuration of a Box.
     pub async fn get(&self, box_id: &str) -> Result<BoxInfoResponse> {
         let path = format!("/boxes/{}", validate_box_id(box_id)?);
         self.get_json(&path).await
     }
 
+    /// Update the name, subdomain, or lifetime of a Box.
     pub async fn update(&self, box_id: &str, request: UpdateBoxRequest) -> Result<BoxInfoResponse> {
         let path = format!("/boxes/{}", validate_box_id(box_id)?);
         self.send_body(Method::PATCH, &path, &request, false).await
     }
 
+    /// Stop and archive a Box, retaining snapshots for later resume.
     pub async fn stop(
         &self,
         box_id: &str,
@@ -148,6 +157,7 @@ impl BoxApi {
         self.execute(json_body(req, request.as_ref()), false).await
     }
 
+    /// Resume an archived Box with optional settings.
     pub async fn resume(
         &self,
         box_id: &str,
@@ -169,6 +179,7 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
+    /// Interrupt work running in a Box.
     pub async fn interrupt(&self, box_id: &str) -> Result<BoxActionResponse> {
         let path = format!("/boxes/{}/interrupt", validate_box_id(box_id)?);
         self.execute(
@@ -215,6 +226,7 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
+    /// Read a detached command status and optionally limit its log tail.
     pub async fn command_status(
         &self,
         box_id: &str,
@@ -232,11 +244,13 @@ impl BoxApi {
         }
     }
 
+    /// Queue an agent prompt in a Box.
     pub async fn prompt(&self, box_id: &str, request: PromptRequest) -> Result<PromptResponse> {
         let path = format!("/boxes/{}/prompt", validate_box_id(box_id)?);
         self.send_body(Method::POST, &path, &request, false).await
     }
 
+    /// Read the state of a queued prompt.
     pub async fn prompt_run_status(
         &self,
         box_id: &str,
@@ -250,6 +264,7 @@ impl BoxApi {
         self.get_json(&path).await
     }
 
+    /// Read a page of Box events with optional cursor and type filters.
     pub async fn events(
         &self,
         box_id: &str,
@@ -262,6 +277,7 @@ impl BoxApi {
         }
     }
 
+    /// Request desktop access with optional VNC settings.
     pub async fn desktop(
         &self,
         box_id: &str,
@@ -279,6 +295,7 @@ impl BoxApi {
         .await
     }
 
+    /// Request desktop access with connection and theme options.
     pub async fn desktop_with(
         &self,
         box_id: &str,
@@ -296,6 +313,7 @@ impl BoxApi {
     }
 
     // --- Snapshots ---
+    /// List snapshot history for one Box.
     pub async fn list_box_snapshots(
         &self,
         box_id: &str,
@@ -307,6 +325,7 @@ impl BoxApi {
             None => self.get_json(&path).await,
         }
     }
+    /// Read the most recent snapshot for a Box, if available.
     pub async fn latest_box_snapshot(&self, box_id: &str) -> Result<SnapshotLatestResponse> {
         self.get_json(&format!(
             "/boxes/{}/snapshots/latest",
@@ -314,6 +333,7 @@ impl BoxApi {
         ))
         .await
     }
+    /// List snapshots across the account with optional pagination.
     pub async fn list_snapshots(
         &self,
         query: Option<&SnapshotsQuery>,
@@ -323,6 +343,7 @@ impl BoxApi {
             None => self.get_json("/snapshots").await,
         }
     }
+    /// Read the file tree and availability metadata of a snapshot.
     pub async fn snapshot_tree(&self, snapshot_id: &str) -> Result<SnapshotTreeResponse> {
         self.get_json(&format!("/snapshots/{}/tree", segment(snapshot_id)?))
             .await
@@ -338,10 +359,12 @@ impl BoxApi {
         self.execute_bytes(req, true).await
     }
 
+    /// Read a snapshot download manifest and reconstruction metadata.
     pub async fn snapshot_download(&self, snapshot_id: &str) -> Result<SnapshotDownloadResponse> {
         self.get_json(&format!("/snapshots/{}/download", segment(snapshot_id)?))
             .await
     }
+    /// Accept permanent deletion of a snapshot and return its operation.
     pub async fn delete_snapshot(&self, snapshot_id: &str) -> Result<DeletionOperationResponse> {
         let id = segment(snapshot_id)?;
         let req = self
@@ -350,7 +373,7 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// Observe an accepted deletion until the operation reports `completed`.
+    /// Read the current state of an accepted deletion operation.
     pub async fn get_deletion_operation(
         &self,
         operation_id: &str,
@@ -360,9 +383,11 @@ impl BoxApi {
     }
 
     // --- Environments ---
+    /// List configured environments.
     pub async fn environments(&self) -> Result<BoxEnvironmentListResponse> {
         self.get_json("/environments").await
     }
+    /// Create a named environment.
     pub async fn create_environment(
         &self,
         request: CreateBoxEnvironmentRequest,
@@ -370,6 +395,7 @@ impl BoxApi {
         self.send_body(Method::POST, "/environments", &request, false)
             .await
     }
+    /// Update environment contents, repository settings, or setup options.
     pub async fn update_environment(
         &self,
         id: &str,
@@ -383,6 +409,7 @@ impl BoxApi {
         )
         .await
     }
+    /// Delete an environment.
     pub async fn delete_environment(&self, id: &str) -> Result<BoxEnvironmentResponse> {
         let req = self.base_request(
             Method::DELETE,
@@ -391,7 +418,7 @@ impl BoxApi {
         self.execute(req, false).await
     }
 
-    /// Convenience: sync shell string with the same default as TS `execCommand` (30s).
+    /// Run a shell command and wait for its result, with a 30-second command timeout.
     pub async fn exec(&self, box_id: &str, command: impl Into<String>) -> Result<CommandResponse> {
         self.command(
             box_id,
@@ -400,6 +427,7 @@ impl BoxApi {
         .await
     }
 
+    /// Read a file with an optional encoding.
     pub async fn read_file(
         &self,
         box_id: &str,
@@ -416,6 +444,7 @@ impl BoxApi {
         self.get_json_query(&api_path, &q).await
     }
 
+    /// Write a file using the supplied path, content, and encoding.
     pub async fn write_file(
         &self,
         box_id: &str,
@@ -426,6 +455,7 @@ impl BoxApi {
         self.send_body(Method::PUT, &path, &request, false).await
     }
 
+    /// Expose a port with default access settings.
     pub async fn host_port(&self, box_id: &str, port: u16) -> Result<HostPortResponse> {
         self.host_port_with(
             box_id,
@@ -437,6 +467,7 @@ impl BoxApi {
         .await
     }
 
+    /// Expose a port with explicit visibility and title options.
     pub async fn host_port_with(
         &self,
         box_id: &str,
@@ -446,6 +477,7 @@ impl BoxApi {
         self.send_body(Method::POST, &path, &request, false).await
     }
 
+    /// Configure a public SSH key for a Box.
     pub async fn ssh_key(
         &self,
         box_id: &str,

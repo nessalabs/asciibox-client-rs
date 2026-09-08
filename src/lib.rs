@@ -1,22 +1,4 @@
-//! Rust client for the [Ascii Box Public API v1](https://docs.ascii.dev/box/api/v1).
-//!
-//! Covers all 59 BoxApi operations and helpers from `@asciidev/box-sdk@0.0.34`,
-//! including administration, environments, snapshots and cancellable streams.
-//! See `docs/parity.md` for mappings and intentional transport differences.
-//!
-//! ```no_run
-//! use box_client::{BoxApi, Configuration, CreateBoxRequest, wait_until_ready};
-//!
-//! # async fn demo() -> box_client::Result<()> {
-//! let api = BoxApi::new(Configuration::from_env()?)?;
-//! let created = api.create(CreateBoxRequest::ttl(1800)).await?;
-//! wait_until_ready(&api, &created.box_.id).await?;
-//! let out = api.exec(&created.box_.id, "uname -a").await?;
-//! println!("{}", out.stdout);
-//! api.stop(&created.box_.id, None).await?;
-//! # Ok(())
-//! # }
-//! ```
+#![doc = include_str!("../docs/guide.md")]
 
 mod client;
 mod config;
@@ -38,5 +20,5 @@ pub use wait::{
     wait_until_idle_with, wait_until_ready, wait_until_ready_with, DesktopWaitOptions, WaitOptions,
 };
 
-/// TypeScript `waitForPromptDone` alias.
+/// Alias for [`wait_for_prompt`].
 pub use wait::wait_for_prompt as wait_for_prompt_done;

@@ -46,7 +46,7 @@ pub enum Error {
     #[error("timeout waiting for box {box_id} (last state={last_state})")]
     WaitTimeout { box_id: String, last_state: String },
 
-    /// TS `waitUntilReady`: `Box entered terminal state ${box.state}`.
+    /// The Box entered a state that cannot satisfy a readiness wait.
     #[error("box {box_id} entered terminal state {state}")]
     BoxTerminal { box_id: String, state: String },
 

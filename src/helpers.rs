@@ -1,10 +1,10 @@
-//! Hand helpers mirroring `@asciidev/box-sdk` `box-helpers.ts` for the surface we ship.
+//! Convenience functions for commands, UTF-8 files, and Box cleanup.
 
 use crate::client::BoxApi;
 use crate::error::Result;
 use crate::types::{CommandRequest, CommandResponse, FileWriteRequest, FileWriteResponse};
 
-/// TS `execCommand(api, boxId, command, cwd?, timeoutSeconds = 30)`.
+/// Run a shell command with an optional working directory and a 30-second default timeout.
 pub async fn exec_command(
     api: &BoxApi,
     box_id: &str,
@@ -19,13 +19,13 @@ pub async fn exec_command(
     api.command(box_id, req).await
 }
 
-/// TS `readText(api, boxId, path)` — `encoding: 'utf8'`.
+/// Read a file as UTF-8 text.
 pub async fn read_text(api: &BoxApi, box_id: &str, path: impl Into<String>) -> Result<String> {
     let res = api.read_file(box_id, path, Some("utf8")).await?;
     Ok(res.content.unwrap_or_default())
 }
 
-/// TS `writeText(api, boxId, path, content)` — `encoding: 'utf8'`.
+/// Write UTF-8 text to a file.
 pub async fn write_text(
     api: &BoxApi,
     box_id: &str,
@@ -43,7 +43,7 @@ pub async fn write_text(
     .await
 }
 
-/// TS `stopAndRemove(api, boxId)` without `{ delete: true }` — stop and keep snapshots.
+/// Stop and archive a Box, retaining its snapshots for later resume.
 pub async fn stop_and_remove(
     api: &BoxApi,
     box_id: &str,
