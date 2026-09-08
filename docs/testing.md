@@ -83,3 +83,35 @@ For load testing, use a dedicated organization and bounded disposable resources;
 measure command-log transfer, response size, latency, cancellation and rate-limit
 behavior. Check `limits()` before creating compute resources. No stress-create
 loop is part of the normal test suite.
+
+
+## Retry and recovery tests
+
+`tests/retries.rs` verifies configurable attempts, disabling retries,
+`Retry-After` metadata, mutation safety, and structured opt-in logging without
+sensitive values. Backoff bounds and validation have unit coverage.
+`tests/handoff.rs` covers durable restarts, stale/concurrent updates, lost write
+acknowledgements, cancellation after commit, cross-process locking, corrupted
+records, permissions, size limits, case-distinct IDs, and application callbacks.
+The ignored child lock probe is run automatically by its parent test.
+
+Two explicit live probes are available in `tests/live_recovery.rs`:
+
+```bash
+# Inject two local 503 responses, then perform an authenticated live read.
+cargo test --test live_recovery live_read_after_injected_transient_failures -- --ignored --nocapture
+
+# Create two fixture Boxes, copy a counter checkpoint through application code,
+# reconcile after restore and launch, then delete both and check completion.
+BOX_TEST_MUTATIONS=1 BOX_TEST_STATE_DIR=work/live-recovery \
+  cargo test --test live_recovery live_handoff_reconciles_completed_launch_and_cleans_up -- --ignored --nocapture
+```
+
+Both require `BOX_API_KEY`. The mutation probe stores resource IDs, idempotency
+keys, receipts, and its non-sensitive checkpoint in the chosen state directory.
+It uses a five-minute Box lifetime, no inherited environment, and never touches
+existing Boxes. Functional and cleanup outcomes are printed separately. The test
+fails if deletion has not completed within its two-minute observation budget;
+`blocked` is a valid service state, so this alone does not diagnose a backend bug.
+Use the saved deletion IDs to continue checking without creating replacement
+resources. Do not remove the state directory until cleanup is confirmed.

@@ -26,11 +26,11 @@ export BOX_API_KEY=box_…
 ```
 
 ```rust,no_run
-use box_client::{BoxApi, Configuration, Result};
+use box_client::{BoxApi, BoxClientConfig, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let api = BoxApi::new(Configuration::from_env()?)?;
+    let api = BoxApi::new(BoxClientConfig::from_env()?)?;
     let boxes = api.boxes(None).await?;
     for item in boxes.boxes {
         println!("{}: {}", item.id, item.state.as_str());
@@ -39,7 +39,7 @@ async fn main() -> Result<()> {
 }
 ```
 
-You can also construct `Configuration::new(api_key)` directly and use its builder
+You can also construct `BoxClientConfig::new(api_key)` directly and use its builder
 methods to set the organization, base URL, timeouts, and response-size limit.
 
 ## Create a Box, run commands, and use files
@@ -252,7 +252,7 @@ Nonzero wait budgets include requests, retries, sleeps, and buffered stream
 consumption. A zero timeout means unlimited observation. Cancellation is
 cooperative; synchronous JSON parsing is not a real-time scheduling guarantee.
 
-GET calls make at most three attempts for connection/timeouts, HTTP 429/502–504,
+By default, GET calls make at most three attempts for connection/timeouts, HTTP 429/502–504,
 or 409 `box_starting` / `box_securing`. Backoff includes jitter and respects
 `Retry-After`. A requested delay longer than the HTTP request timeout returns the
 error without retrying early. Waits and streams propagate exhausted errors.
@@ -261,3 +261,140 @@ Mutations are never automatically retried. Use `create_with_idempotency` or the
 full create/fork options when you need to supply an idempotency key for your own
 retry handling. Responses above the configured buffer limit return
 `Error::ResponseTooLarge`, including errors and chunked downloads.
+
+
+## Configure retries and logging
+
+`BoxClientConfig` is the public configuration type. `Configuration` remains an
+alias for existing callers. `BoxApi::config()` exposes the active configuration.
+Retry settings apply to GET requests; mutations and handoff action callbacks are
+never automatically retried.
+
+```rust,no_run
+use std::time::Duration;
+use box_client::{BoxApi, BoxClientConfig, RetryConfig, Result};
+
+fn client() -> Result<BoxApi> {
+    let config = BoxClientConfig::from_env()?
+        .with_retry(RetryConfig {
+            max_attempts: 5,
+            initial_delay: Duration::from_millis(250),
+            max_delay: Duration::from_secs(10),
+            multiplier: 2,
+            jitter: true,
+        });
+    BoxApi::new(config)
+}
+```
+
+| Retry setting | Default | Meaning |
+| --- | --- | --- |
+| `max_attempts` | 3 | Includes the first request; 1 disables retries |
+| `initial_delay` | 200 ms | Base delay before the first retry |
+| `multiplier` | 2 | Multiply the base delay for each subsequent retry |
+| `max_delay` | 30 s | Cap on local backoff, including jitter |
+| `jitter` | true | Add a random delay from zero through the current base delay |
+
+Without jitter, delays are `initial_delay × multiplier^retry_index`, capped at
+`max_delay`. With jitter, the final delay is also capped. `max_attempts` and
+`multiplier` must be at least 1, and `initial_delay` cannot exceed `max_delay`.
+Invalid settings return `Error::Config` when constructing `BoxApi`.
+
+The server's `Retry-After` is a minimum and may exceed `max_delay`. If the final
+wait would exceed `request_timeout`, the client returns the error. Request
+timeouts apply per attempt; they are not a total retry budget. Use an outer
+`tokio::time::timeout` for a total call budget, or the built-in wait/stream
+budgets for those helpers.
+
+### Logging belongs to the application
+
+The SDK emits structured DEBUG events and request spans through `tracing`.
+It does not install a subscriber, parse logging environment variables, or add a
+logging switch to `BoxClientConfig`. This follows the
+[tracing guidance for libraries](https://docs.rs/tracing/latest/tracing/#in-libraries).
+
+To select logging with `RUST_LOG`, add this dependency to your **application**:
+
+```toml
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+```
+
+Initialize your subscriber once at application startup:
+
+```rust,no_run
+use tracing_subscriber::EnvFilter;
+
+fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| EnvFilter::new("warn")))
+        .init();
+    // Start your application and use BoxApi normally.
+}
+```
+
+```bash
+RUST_LOG=box_client=debug cargo run          # SDK diagnostics
+RUST_LOG=box_client::retry=debug cargo run   # Retry events only
+RUST_LOG=box_client=off cargo run            # Disable SDK diagnostics
+```
+
+Applications with an existing subscriber keep their existing setup. They can
+also set filters in code, use JSON output, or export tracing spans. Without a
+subscriber collecting the events, the SDK does not print logs.
+
+Targets are `box_client::http`, `box_client::retry`, and `box_client::handoff`.
+Request spans identify a static operation name and HTTP method. Events report
+attempts, status, elapsed time, retry delay, and a fixed error category. Handoff
+events report phase and revision. The SDK does not log URLs, resource IDs,
+organization IDs, idempotency keys, tokens, headers, bodies, checkpoint references,
+server request IDs or server error text, even at TRACE level. Select SDK targets
+when you want SDK diagnostics; other dependencies control their own logging.
+
+## Handle exhausted errors in your scheduler
+
+`Error::is_retryable()` classifies transient failures; it does not mean repeating
+a mutation is safe. `Error::Api` contains `status`, `code`, `request_id`, `message`,
+`details`, and `retry_after`. `details` is boxed to keep the error enum compact;
+`api_details()` still returns `Option<&serde_json::Value>`. Non-envelope HTTP errors use `Error::HttpStatus`
+with `status`, truncated `body`, and `retry_after`. Accessors include `status()`,
+`api_message()`, `api_details()`, `unexpected_body()`, and `retry_after()`.
+
+`retry_after()` preserves valid seconds or HTTP-date headers even when retries
+are disabled/exhausted, or the failed call was a mutation. Dates are converted
+to a delay when the response arrives. Missing or invalid headers return `None`.
+The value is not a countdown; callers persisting it should record their own
+observation time. Timeout/connect errors use `Error::Http`; decoding, oversized
+responses, cancellation, and terminal Box states have their own variants.
+
+If your scheduler owns retries, use `RetryConfig::disabled()` to avoid multiplying
+its attempts by the SDK's attempts. Inspect a safe GET failure like this:
+
+```rust,no_run
+use box_client::{BoxApi, BoxClientConfig, RetryConfig, Result};
+
+async fn inspect() -> Result<()> {
+    let api = BoxApi::new(BoxClientConfig::from_env()?
+        .with_retry(RetryConfig::disabled()))?;
+    match api.boxes(None).await {
+        Ok(response) => println!("boxes={}", response.boxes.len()),
+        Err(error) if error.is_retryable() => {
+            // Pass this metadata to your scheduler; no retry is launched here.
+            eprintln!("transient status={:?}, retry_after={:?}",
+                error.status(), error.retry_after());
+            return Err(error);
+        }
+        Err(error) => return Err(error),
+    }
+    Ok(())
+}
+```
+
+## Durable handoff progress
+
+The public `handoff` module provides `HandoffJournal`, a pluggable `ReceiptStore`,
+and a local Unix `FileReceiptStore`. The journal persists checkpoint references
+and capture/restore/start intent and confirmations. Your application supplies
+the actual transfer and continuation actions through callbacks or explicit
+transitions. Recovery checks ambiguous outcomes before repeating work. See the
+module documentation for configuration, recovery examples, and storage guarantees.

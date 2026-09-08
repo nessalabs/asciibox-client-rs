@@ -3,6 +3,7 @@
 mod client;
 mod config;
 mod error;
+pub mod handoff;
 mod helpers;
 mod stream;
 mod types;
@@ -11,7 +12,7 @@ pub use stream::{stream_events, stream_prompt, StreamEventsOptions, StreamPrompt
 pub use tokio_util::sync::CancellationToken;
 
 pub use client::BoxApi;
-pub use config::Configuration;
+pub use config::{BoxClientConfig, Configuration, RetryConfig};
 pub use error::{Error, Result};
 pub use helpers::{exec_command, read_text, stop_and_remove, stop_and_remove_with, write_text};
 pub use types::*;

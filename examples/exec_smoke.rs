@@ -3,11 +3,11 @@
 //! ```bash
 //! BOX_API_KEY=… BOX_ID=bx_… cargo run --example exec_smoke
 //! ```
-use box_client::{wait_until_ready, BoxApi, CommandRequest, Configuration, ResumeRequest};
+use box_client::{wait_until_ready, BoxApi, BoxClientConfig, CommandRequest, ResumeRequest};
 
 #[tokio::main]
 async fn main() -> box_client::Result<()> {
-    let api = BoxApi::new(Configuration::from_env()?)?;
+    let api = BoxApi::new(BoxClientConfig::from_env()?)?;
     let box_id = std::env::var("BOX_ID").map_err(|_| {
         box_client::Error::Config("set BOX_ID to a box id (bx_…); no default".into())
     })?;

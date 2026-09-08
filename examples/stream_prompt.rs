@@ -1,11 +1,11 @@
 //! BOX_API_KEY=… BOX_ID=bx_… BOX_PROMPT='…' cargo run --example stream_prompt
 //! Queues one prompt and prints event IDs/types until that prompt finishes.
-use box_client::{stream_prompt, BoxApi, Configuration, Error, PromptProvider, PromptRequest};
+use box_client::{stream_prompt, BoxApi, BoxClientConfig, Error, PromptProvider, PromptRequest};
 use futures_util::{pin_mut, StreamExt};
 
 #[tokio::main]
 async fn main() -> box_client::Result<()> {
-    let api = BoxApi::new(Configuration::from_env()?)?;
+    let api = BoxApi::new(BoxClientConfig::from_env()?)?;
     let box_id = std::env::var("BOX_ID").map_err(|_| Error::Config("set BOX_ID".into()))?;
     let prompt = std::env::var("BOX_PROMPT").map_err(|_| Error::Config("set BOX_PROMPT".into()))?;
     let stream = stream_prompt(

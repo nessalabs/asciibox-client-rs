@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+pub mod logs;
 use box_client::{BoxApi, Configuration};
 use serde_json::Value;
 use wiremock::MockServer;
