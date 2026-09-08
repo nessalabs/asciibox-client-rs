@@ -257,9 +257,10 @@ or 409 `box_starting` / `box_securing`. Backoff includes jitter and respects
 `Retry-After`. A requested delay longer than the HTTP request timeout returns the
 error without retrying early. Waits and streams propagate exhausted errors.
 
-Mutations are never automatically retried. Supply an idempotency key through
-`CreateOptions` or `ForkOptions` when calling `create` or `fork` for your own
-retry handling. Responses above the configured buffer limit return
+Mutations are never automatically retried. For your own retry handling, supply
+the idempotency key in [`CreateOptions::idempotency_key`] when calling
+[`BoxApi::create`], or as the third argument (`Some("your-stable-key")`) to
+[`BoxApi::fork`]. Responses above the configured buffer limit return
 `Error::ResponseTooLarge`, including errors and chunked downloads.
 
 
