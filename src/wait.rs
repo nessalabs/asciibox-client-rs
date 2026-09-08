@@ -1,25 +1,24 @@
+use std::future::Future;
 use std::time::Duration;
 
-use tokio::time::{sleep, Instant};
+use tokio::time::{sleep, sleep_until, timeout_at, Instant};
 
 use crate::client::BoxApi;
 use crate::error::{Error, Result};
+use crate::types::*;
 
-/// Mirrors TS `WaitOptions` in `@asciidev/box-sdk` `box-helpers.ts`.
+/// Polling options. Zero timeout means unlimited, as in the TypeScript helpers.
+/// Nonzero timeouts bound the entire wait, including HTTP retries and sleeps.
+/// Dropping a wait future cancels local polling, not server-side work.
 #[derive(Debug, Clone)]
 pub struct WaitOptions {
-    /// TS: `timeoutMs` (default 300_000 for `waitUntilReady`).
     pub timeout: Duration,
-    /// TS: `intervalMs` (default 2_000).
     pub poll_interval: Duration,
 }
 
 impl Default for WaitOptions {
     fn default() -> Self {
-        Self {
-            timeout: Duration::from_millis(300_000),
-            poll_interval: Duration::from_millis(2_000),
-        }
+        Self::from_millis(300_000, 2_000)
     }
 }
 
@@ -32,47 +31,202 @@ impl WaitOptions {
     }
 }
 
-/// TS `waitUntilReady`: poll until `ready` | `idle` | `running`.
-///
-/// Terminal failure states match the TypeScript helper: `archived`, `archiving`, `error`.
-pub async fn wait_until_ready(api: &BoxApi, box_id: &str) -> Result<crate::types::Box> {
+enum Poll<T> {
+    Ready(T),
+    Pending(String),
+}
+
+async fn poll<T, F, Fut>(resource_id: &str, opts: WaitOptions, mut fetch: F) -> Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<Poll<T>>>,
+{
+    let deadline = if opts.timeout.is_zero() {
+        None
+    } else {
+        Some(
+            Instant::now()
+                .checked_add(opts.timeout)
+                .ok_or_else(|| Error::Config("wait timeout is too large".into()))?,
+        )
+    };
+    let mut last_state = "not yet observed".to_string();
+    loop {
+        let timed_out = || Error::WaitTimeout {
+            box_id: resource_id.into(),
+            last_state: last_state.clone(),
+        };
+        let result = match deadline {
+            Some(end) => {
+                if Instant::now() >= end {
+                    return Err(timed_out());
+                }
+                let result = timeout_at(end, fetch()).await.map_err(|_| timed_out())?;
+                // A ready response must not override an already exhausted budget.
+                if Instant::now() >= end {
+                    return Err(timed_out());
+                }
+                result
+            }
+            None => fetch().await,
+        };
+        match result {
+            Ok(Poll::Ready(value)) => return Ok(value),
+            Ok(Poll::Pending(state)) => last_state = state,
+            Err(error) => return Err(error),
+        }
+        match deadline {
+            Some(end) => {
+                let wake = Instant::now()
+                    .checked_add(opts.poll_interval)
+                    .unwrap_or(end)
+                    .min(end);
+                sleep_until(wake).await;
+            }
+            None => sleep(opts.poll_interval).await,
+        }
+    }
+}
+
+pub async fn wait_until_ready(api: &BoxApi, box_id: &str) -> Result<Box> {
     wait_until_ready_with(api, box_id, WaitOptions::default()).await
 }
 
-pub async fn wait_until_ready_with(
+pub async fn wait_until_ready_with(api: &BoxApi, box_id: &str, opts: WaitOptions) -> Result<Box> {
+    wait_for_box(api, box_id, opts, BoxState::is_operable).await
+}
+
+pub async fn wait_until_idle(api: &BoxApi, box_id: &str) -> Result<Box> {
+    wait_until_idle_with(api, box_id, WaitOptions::from_millis(600_000, 2_000)).await
+}
+
+pub async fn wait_until_idle_with(api: &BoxApi, box_id: &str, opts: WaitOptions) -> Result<Box> {
+    wait_for_box(api, box_id, opts, |state| *state == BoxState::Idle).await
+}
+
+async fn wait_for_box(
     api: &BoxApi,
     box_id: &str,
     opts: WaitOptions,
-) -> Result<crate::types::Box> {
-    let deadline = Instant::now() + opts.timeout;
-
-    loop {
-        match api.get(box_id).await {
-            Ok(info) => {
-                let state = info.box_.state.clone();
-                if state.is_operable() {
-                    return Ok(info.box_);
-                }
-                if state.is_terminal_failure() {
-                    return Err(Error::BoxTerminal {
-                        box_id: box_id.to_string(),
-                        state: state.as_str().to_string(),
-                    });
-                }
-                if Instant::now() >= deadline {
-                    return Err(Error::WaitTimeout {
-                        box_id: box_id.to_string(),
-                        last_state: state.as_str().to_string(),
-                    });
-                }
-            }
-            Err(e) if e.is_retryable() => {
-                if Instant::now() >= deadline {
-                    return Err(e);
-                }
-            }
-            Err(e) => return Err(e),
+    ready: impl Fn(&BoxState) -> bool,
+) -> Result<Box> {
+    poll(box_id, opts, || async {
+        let info = api.get(box_id).await?;
+        if ready(&info.box_.state) {
+            return Ok(Poll::Ready(info.box_));
         }
-        sleep(opts.poll_interval).await;
+        let state = info.box_.state.as_str().to_owned();
+        if info.box_.state.is_terminal_failure() {
+            return Err(Error::BoxTerminal {
+                box_id: box_id.into(),
+                state,
+            });
+        }
+        Ok(Poll::Pending(state))
+    })
+    .await
+}
+
+/// Return the terminal run for either `finished` or `failed`, matching TypeScript.
+pub async fn wait_for_prompt(
+    api: &BoxApi,
+    box_id: &str,
+    prompt_id: &str,
+    opts: Option<WaitOptions>,
+) -> Result<PromptRun> {
+    poll(
+        box_id,
+        opts.unwrap_or_else(|| WaitOptions::from_millis(1_800_000, 2_000)),
+        || async {
+            let run = api.prompt_run_status(box_id, prompt_id).await?.prompt_run;
+            if matches!(run.status.as_str(), "finished" | "failed") {
+                Ok(Poll::Ready(run))
+            } else {
+                Ok(Poll::Pending(format!("prompt:{}", run.status)))
+            }
+        },
+    )
+    .await
+}
+
+/// Match TypeScript's `vnc` and `publicAccess` options, plus a bounded wait budget.
+#[derive(Debug, Clone)]
+pub struct DesktopWaitOptions {
+    pub wait: WaitOptions,
+    pub vnc: Option<u8>,
+    pub public_access: bool,
+}
+impl Default for DesktopWaitOptions {
+    fn default() -> Self {
+        Self {
+            wait: WaitOptions::default(),
+            vnc: Some(1),
+            public_access: false,
+        }
     }
+}
+
+pub async fn wait_for_desktop(
+    api: &BoxApi,
+    box_id: &str,
+    public_access: bool,
+    opts: Option<WaitOptions>,
+) -> Result<DesktopResponse> {
+    wait_for_desktop_with(
+        api,
+        box_id,
+        DesktopWaitOptions {
+            public_access,
+            wait: opts.unwrap_or_default(),
+            ..Default::default()
+        },
+    )
+    .await
+}
+
+pub async fn wait_for_desktop_with(
+    api: &BoxApi,
+    box_id: &str,
+    opts: DesktopWaitOptions,
+) -> Result<DesktopResponse> {
+    poll(box_id, opts.wait, || async {
+        let desktop = api
+            .desktop(
+                box_id,
+                opts.vnc,
+                DesktopRequest {
+                    public_access: opts.public_access.then_some(true),
+                },
+            )
+            .await?;
+        if desktop
+            .desktop_url
+            .as_ref()
+            .is_some_and(|url| !url.is_empty())
+            && desktop.provisioning != Some(true)
+        {
+            Ok(Poll::Ready(desktop))
+        } else {
+            Ok(Poll::Pending("desktop provisioning".into()))
+        }
+    })
+    .await
+}
+
+/// Wait for backend deletion completion. A hidden box or `blocked` operation is
+/// not completion; those operations remain pending until completed or timed out.
+pub async fn wait_for_deletion(
+    api: &BoxApi,
+    operation_id: &str,
+    opts: Option<WaitOptions>,
+) -> Result<DeletionOperation> {
+    poll(operation_id, opts.unwrap_or_default(), || async {
+        let operation = api.get_deletion_operation(operation_id).await?.operation;
+        if operation.status == "completed" {
+            Ok(Poll::Ready(operation))
+        } else {
+            Ok(Poll::Pending(format!("deletion:{}", operation.status)))
+        }
+    })
+    .await
 }
