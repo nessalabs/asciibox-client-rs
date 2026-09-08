@@ -20,11 +20,11 @@ Set `BOX_API_KEY` to a key from the Box dashboard or CLI. `BOX_ORG` and
 `BOX_BASE_URL` are optional.
 
 ```rust
-use box_client::{BoxApi, Configuration, Result};
+use box_client::{BoxApi, BoxClientConfig, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let api = BoxApi::new(Configuration::from_env()?)?;
+    let api = BoxApi::new(BoxClientConfig::from_env()?)?;
     let response = api.boxes(None).await?;
 
     for item in response.boxes {
@@ -39,6 +39,8 @@ async fn main() -> Result<()> {
 - [SDK guide](docs/guide.md): complete Rust examples for commands, files, prompts,
   streams, snapshots, environments, cleanup, and error handling.
 - [API reference](docs/api.md): all 59 endpoint operations and convenience helpers.
+- [Handoff receipts](docs/handoff.md): durable progress records, checkpoint references,
+  application callbacks, and configurable storage.
 - [Migration guide](docs/migration.md): changes for existing callers.
 - [Testing](docs/testing.md): local checks, fixture verification, and live tests.
 
@@ -70,7 +72,9 @@ The client shares a connection pool across clones. Streams are lazy and support
 `CancellationToken`. Waits bound requests, retries, and sleeps; zero timeout means
 unlimited observation.
 
-GET requests retry transient failures up to three attempts and honor `Retry-After`.
+GET requests retry transient failures up to three attempts by default and honor
+`Retry-After`. `BoxClientConfig` exposes attempts, exponential backoff and jitter.
+Diagnostics use application-filtered `tracing`; `Configuration` remains a compatibility alias.
 Mutations are never automatically retried. Responses have a configurable 64 MiB
 buffer limit. Error formatting and content-bearing model `Debug` output redact
 sensitive data.
@@ -83,6 +87,7 @@ is a caller budget, not a service completion guarantee.
 
 ```bash
 cargo run --example list_boxes
+RUST_LOG=box_client=debug cargo run --example logging
 BOX_ID=bx_… cargo run --example exec_smoke
 BOX_ID=bx_… BOX_PROMPT='Summarize the project' cargo run --example stream_prompt
 

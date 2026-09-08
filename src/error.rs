@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, time::Duration};
 
 use thiserror::Error;
 
@@ -20,11 +20,13 @@ pub enum Error {
     /// Server API failure. `Display` shows status/code/request_id only.
     #[error("api {status}: {code} (request_id={request_id})")]
     Api {
+        /// Parsed server Retry-After, available even when retries are exhausted.
+        retry_after: Option<Duration>,
         status: u16,
         code: String,
         message: String,
         request_id: String,
-        details: Option<serde_json::Value>,
+        details: Option<Box<serde_json::Value>>,
     },
 
     #[error("response exceeds configured limit of {limit} bytes")]
@@ -32,7 +34,11 @@ pub enum Error {
 
     /// Non-JSON or non-envelope HTTP error; the HTTP status remains inspectable.
     #[error("HTTP {status} (body redacted)")]
-    HttpStatus { status: u16, body: String },
+    HttpStatus {
+        status: u16,
+        body: String,
+        retry_after: Option<Duration>,
+    },
 
     #[error("event stream aborted")]
     Aborted,
@@ -76,6 +82,7 @@ impl fmt::Debug for Error {
                 message,
                 request_id,
                 details,
+                ..
             } => f
                 .debug_struct("Api")
                 .field("status", status)
@@ -111,7 +118,7 @@ impl fmt::Debug for Error {
                 .field("line", &e.line())
                 .field("column", &e.column())
                 .finish(),
-            Self::HttpStatus { status, body } => f
+            Self::HttpStatus { status, body, .. } => f
                 .debug_struct("HttpStatus")
                 .field("status", status)
                 .field("body_len", &body.len())
@@ -122,6 +129,15 @@ impl fmt::Debug for Error {
 }
 
 impl Error {
+    /// Server Retry-After as a delay measured when the response arrived.
+    /// Available on API/HTTP status errors, including mutation failures.
+    pub fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Api { retry_after, .. } | Self::HttpStatus { retry_after, .. } => *retry_after,
+            _ => None,
+        }
+    }
+
     /// Whether a **safe automatic retry** of an idempotent request may help.
     ///
     /// Does **not** treat every 409 as retryable — only known transient codes
@@ -161,7 +177,7 @@ impl Error {
     /// Server-provided API details JSON, if present.
     pub fn api_details(&self) -> Option<&serde_json::Value> {
         match self {
-            Error::Api { details, .. } => details.as_ref(),
+            Error::Api { details, .. } => details.as_deref(),
             _ => None,
         }
     }
@@ -183,11 +199,12 @@ mod tests {
     #[test]
     fn api_display_and_debug_omit_message_and_details() {
         let err = Error::Api {
+            retry_after: None,
             status: 400,
             code: "bad_request".into(),
             message: "leaked-secret-token-xyz".into(),
             request_id: "req_1".into(),
-            details: Some(json!({"token": "also-secret"})),
+            details: Some(Box::new(json!({"token": "also-secret"}))),
         };
         let display = err.to_string();
         assert!(display.contains("bad_request"));
