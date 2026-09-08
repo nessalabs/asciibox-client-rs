@@ -69,7 +69,7 @@ mod unix {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
                 Err(e) => return Err(e.into()),
             };
-            acquire_lock(&lock)?;
+            let _lock = acquire_lock(lock)?;
             let receipt = self.read(id)?;
             // A failed or canceled writer may have renamed the file before its
             // durability acknowledgement. Complete the sync before exposing it.
@@ -104,9 +104,9 @@ mod unix {
                     self.directory
                         .join(format!("{}.lock", filename(&receipt.id))),
                 )?;
-            acquire_lock(&lock)?;
+            let _lock = acquire_lock(lock)?;
             // Keep the lock file permanently: removing it can split concurrent writers
-            // across different inodes. Dropping its handle releases the OS lock.
+            // across different inodes. The guard explicitly releases the OS lock.
             let current = self.read(&receipt.id)?;
             if current.as_ref().map(|r| r.revision) != expected_revision {
                 return Err(HandoffError::Conflict);
@@ -150,9 +150,17 @@ mod unix {
     fn filename(id: &str) -> String {
         id.bytes().map(|byte| format!("{byte:02x}")).collect()
     }
-    fn acquire_lock(lock: &File) -> HandoffResult<()> {
+    struct ReceiptLock(File);
+    impl Drop for ReceiptLock {
+        fn drop(&mut self) {
+            // Closing this descriptor alone is insufficient when a concurrent
+            // process spawn has inherited the same open file description.
+            let _ = self.0.unlock();
+        }
+    }
+    fn acquire_lock(lock: File) -> HandoffResult<ReceiptLock> {
         match lock.try_lock() {
-            Ok(()) => Ok(()),
+            Ok(()) => Ok(ReceiptLock(lock)),
             Err(std::fs::TryLockError::WouldBlock) => Err(HandoffError::Busy),
             Err(std::fs::TryLockError::Error(e)) => Err(e.into()),
         }
@@ -190,6 +198,47 @@ mod unix {
             tokio::task::spawn_blocking(move || store.write(&receipt, expected_revision))
                 .await
                 .map_err(HandoffError::storage)?
+        }
+    }
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn lock_release_does_not_wait_for_duplicate_descriptors() {
+            let path = std::env::temp_dir().join(format!(
+                "box-client-lock-release-{:032x}",
+                fastrand::u128(..)
+            ));
+            let cleanup = TempPath(path.clone());
+            let file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&path)
+                .unwrap();
+            // A duplicate shares the open file description, just as a descriptor
+            // inherited across fork does before the child's exec closes it.
+            let duplicate = file.try_clone().unwrap();
+            let guard = acquire_lock(file).unwrap();
+            let contender = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&path)
+                .unwrap();
+            assert!(matches!(
+                contender.try_lock(),
+                Err(std::fs::TryLockError::WouldBlock)
+            ));
+            drop(guard);
+            contender
+                .try_lock()
+                .expect("completed operation must release its lock");
+            contender.unlock().unwrap();
+            drop(duplicate);
+            drop(contender);
+            drop(cleanup);
         }
     }
 }

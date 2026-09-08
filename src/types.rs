@@ -3,14 +3,6 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-/// `ttlSeconds`: omit / `Some(secs)` / `null` (disable auto-stop).
-/// Wire as `Option` where `None` skips the field and `Some(None)` sends JSON null.
-pub type TtlSeconds = Option<u32>;
-
-fn is_none_ttl(v: &Option<TtlSeconds>) -> bool {
-    v.is_none()
-}
-
 // --- Account ---
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -72,7 +64,6 @@ impl BoxState {
         }
     }
 
-    /// States where command / SSH / agent work can proceed.
     /// Whether the Box is ready to accept work.
     pub fn is_operable(&self) -> bool {
         matches!(self, Self::Ready | Self::Idle | Self::Running)
@@ -195,9 +186,9 @@ pub struct CreateBoxRequest {
     #[serde(
         default,
         deserialize_with = "deserialize_optional_nullable",
-        skip_serializing_if = "is_none_ttl"
+        skip_serializing_if = "Option::is_none"
     )]
-    pub ttl_seconds: Option<TtlSeconds>,
+    pub ttl_seconds: Option<Option<u32>>,
     /// Often holds secrets — redacted in `Debug`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env: Option<HashMap<String, String>>,
@@ -257,9 +248,9 @@ pub struct UpdateBoxRequest {
     #[serde(
         default,
         deserialize_with = "deserialize_optional_nullable",
-        skip_serializing_if = "is_none_ttl"
+        skip_serializing_if = "Option::is_none"
     )]
-    pub ttl_seconds: Option<TtlSeconds>,
+    pub ttl_seconds: Option<Option<u32>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subdomain: Option<String>,
 }
@@ -286,9 +277,9 @@ pub struct ResumeRequest {
     #[serde(
         default,
         deserialize_with = "deserialize_optional_nullable",
-        skip_serializing_if = "is_none_ttl"
+        skip_serializing_if = "Option::is_none"
     )]
-    pub ttl_seconds: Option<TtlSeconds>,
+    pub ttl_seconds: Option<Option<u32>>,
 }
 
 impl fmt::Debug for ResumeRequest {

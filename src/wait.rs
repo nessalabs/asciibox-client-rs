@@ -208,10 +208,13 @@ pub async fn wait_for_desktop_with(
         let desktop = api
             .desktop(
                 box_id,
-                opts.vnc,
-                DesktopRequest {
+                Some(&crate::DesktopQuery {
+                    vnc: opts.vnc,
+                    ..Default::default()
+                }),
+                Some(DesktopRequest {
                     public_access: opts.public_access.then_some(true),
-                },
+                }),
             )
             .await?;
         if desktop
